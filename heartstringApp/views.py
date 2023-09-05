@@ -20,7 +20,8 @@ from heartstringApp.models import Ticket, Payment, Play, Video, VideoPayment, Pl
     VideoCast, VideoAvailability, UserAccount
 from heartstringApp.serializers import TicketsSerializer, PaymentSerializer, PlaySerializer, \
     PlayCastSerializer, OfferSerializer, VideoSerializer, VideoCastSerializer, VideoPaymentSerializer, \
-    VideoAvailabilitySerializer, OtherOfferSerializer, PlayDateSerializer, UserCreateSerializer, UserAccountSerializer
+    VideoAvailabilitySerializer, OtherOfferSerializer, PlayDateSerializer, UserCreateSerializer, UserAccountSerializer, \
+    MyPlaySerializer, MyStreamSerializer
 
 
 # Create your views here.
@@ -445,6 +446,15 @@ class PlayViewSet(viewsets.ViewSet):
         return Response(dict_response)
 
 
+class MyPlayListView(generics.ListAPIView):
+    serializer_class = MyPlaySerializer  # Use your custom serializer
+    permission_classes = [IsAuthenticated]  # Ensure the user is authenticated
+
+    def get_queryset(self):
+        # Filter plays by the currently authenticated user
+        return Play.objects.filter(user=self.request.user)
+
+
 class PlayCastViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -709,6 +719,15 @@ class VideoViewSet(viewsets.ViewSet):
         # except VideoPayment.DoesNotExist:
         #     return Response({"error": True, "message": "You haven't made the payment for this video"},
         #                     status=status.HTTP_403_FORBIDDEN)
+
+
+class MyStreamListView(generics.ListAPIView):
+    serializer_class = MyStreamSerializer  # Use your custom serializer
+    permission_classes = [IsAuthenticated]  # Ensure the user is authenticated
+
+    def get_queryset(self):
+        # Filter plays by the currently authenticated user
+        return Video.objects.filter(user=self.request.user)
 
 
 class VideoPaymentViewSet(viewsets.ViewSet):
