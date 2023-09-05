@@ -81,6 +81,19 @@ class PlaySerializer(serializers.ModelSerializer):
         return representation
 
 
+class MyPlaySerializer(serializers.ModelSerializer):
+    user = UserCreateSerializer(read_only=True)
+
+    class Meta:
+        model = Play
+        fields = '__all__'
+
+    def to_representation(self, instance):
+        response = super().to_representation(instance)
+        response["user"] = UserCreateSerializer(instance.user_id).data
+        return response
+
+
 class PlayCastSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlayCast
