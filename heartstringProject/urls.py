@@ -8,7 +8,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from heartstringApp import views
-from heartstringApp.views import SuperUserRegistrationView, UserAccountUpdateView, UserAccountDeleteView
+from heartstringApp.views import SuperUserRegistrationView, UserAccountUpdateView, UserAccountDeleteView, \
+    MyPlayListView, MyStreamListView
 
 # from heartstringProject import settings
 
@@ -30,6 +31,8 @@ urlpatterns = [
     path('auth/superuser/', SuperUserRegistrationView.as_view({'post': 'create_superuser'}), name='superuser-registration'),
     path('api/update-user/', UserAccountUpdateView.as_view(), name='update-user'),
     path('api/delete-user/<int:pk>/', UserAccountDeleteView.as_view(), name='user-delete'),
+    path('api/my-plays/', MyPlayListView.as_view(), name='my-plays'),
+    path('api/my-stream/', MyStreamListView.as_view(), name='my-stream'),
     path('api/', include(router.urls)),
     path('api/gettoken/', TokenObtainPairView.as_view(), name="gettoken"),
     path('api/refresh_token/', TokenRefreshView.as_view(), name="refresh_token"),
