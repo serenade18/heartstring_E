@@ -177,6 +177,19 @@ class VideoSerializer(serializers.ModelSerializer):
         return representation
 
 
+class MyStreamSerializer(serializers.ModelSerializer):
+    user = UserCreateSerializer(read_only=True)
+
+    class Meta:
+        model = Video
+        fields = '__all__'
+
+    def to_representation(self, instance):
+        response = super().to_representation(instance)
+        response["user"] = UserCreateSerializer(instance.user_id).data
+        return response
+
+
 class VideoCastSerializer(serializers.ModelSerializer):
     class Meta:
         model = VideoCast
