@@ -118,30 +118,57 @@ class TicketViewSet(viewsets.ViewSet):
         return Response(response_dict)
 
 
+    # def create(self, request):
+    #     try:
+    #         serializer = TicketsSerializer(data=request.data, context={"request": request})
+    #         serializer.is_valid(raise_exception=True)
+    #         ticket = serializer.save(user=request.user)
+    #
+    #         # Generate QR code after successful payment
+    #         if ticket.purchased:
+    #             qr_code_data = f"M-Pesa Shortcode: {ticket.mpesa_shortcode}\n"
+    #             qr_code_data += f"Customer Name: {request.user.username}\n"
+    #             qr_code_data += f"Ticket Number/ID: {ticket.ticket_number}\n"
+    #             qr_code_data += f"Number of Tickets: {ticket.number_of_tickets}\n"
+    #
+    #             qr_code_image = generate_qr_code(qr_code_data)
+    #
+    #             # Save the QR code to the ticket
+    #             ticket.qr_code.save("qr_code.png", ContentFile(qr_code_image))
+    #             ticket.save()
+    #
+    #         dict_response = {"error": False, "message": "Ticket Bought Successfully"}
+    #     except:
+    #         dict_response = {"error": True, "message": "Error During Saving Ticket Data"}
+    #
+    #     return Response(dict_response)
     def create(self, request):
         try:
             serializer = TicketsSerializer(data=request.data, context={"request": request})
             serializer.is_valid(raise_exception=True)
+
+            # Save the ticket with a default QR code
             ticket = serializer.save(user=request.user)
 
-            # Generate QR code after successful payment
-            if ticket.purchased:
-                qr_code_data = f"M-Pesa Shortcode: {ticket.mpesa_shortcode}\n"
-                qr_code_data += f"Customer Name: {request.user.username}\n"
-                qr_code_data += f"Ticket Number/ID: {ticket.ticket_number}\n"
-                qr_code_data += f"Number of Tickets: {ticket.number_of_tickets}\n"
-
-                qr_code_image = generate_qr_code(qr_code_data)
-
-                # Save the QR code to the ticket
-                ticket.qr_code.save("qr_code.png", ContentFile(qr_code_image))
-                ticket.save()
+            # Generate and set the default QR code
+            self.generate_default_qr_code(ticket)
 
             dict_response = {"error": False, "message": "Ticket Bought Successfully"}
         except:
             dict_response = {"error": True, "message": "Error During Saving Ticket Data"}
 
         return Response(dict_response)
+
+    # Custom method to generate and set a default QR code for the ticket
+    def generate_default_qr_code(self, ticket):
+        qr_code_data = f"Default QR Code Data for Ticket {ticket.ticket_number}"
+
+        # Assuming you have a function generate_qr_code that generates the QR code
+        qr_code_image = generate_qr_code(qr_code_data)
+
+        # Save the default QR code to the ticket
+        ticket.qr_code.save("default_qr_code.png", ContentFile(qr_code_image))
+        ticket.save()
 
     def retrieve(self, request, pk=None):
         queryset = Ticket.objects.filter(user=request.user)
@@ -174,7 +201,7 @@ class PaymentViewSet(viewsets.ViewSet):
         payment_method = request.data.get("payment_method")
         if payment_method == "mpesa":
             # First call: Get SID
-            url_get_sid = "https://apis.ipayafrica.com/payments/v2/transact/token"
+            url_get_sid = "https://apis.ipayafrica.com/payments/v2/transact"
 
             payload_get_sid = {
                 "amount": str(ticket.total_amount),
@@ -224,11 +251,12 @@ class PaymentViewSet(viewsets.ViewSet):
                     qr_code = qrcode.make(qr_code_data)
 
                     # Save the QR code to a file or return it as a response
-                    qr_code.save("payment_qrcode.png")
+                    qr_code_path = f"payment_qrcode_{ticket_id}.png"
+                    qr_code.save(qr_code_path)
 
                     # Associate the payment with the ticket
                     ticket.payment_status = "Pending"
-                    ticket.qr_code = qr_code
+                    ticket.qr_code = qr_code_path  # Save the QR code path to the ticket
                     ticket.save()
 
                     return Response({"success": True, "message": "Payment request sent to MPESA number."})
@@ -238,23 +266,18 @@ class PaymentViewSet(viewsets.ViewSet):
                 return Response({"success": False, "message": "Error occurred during payment request."})
 
         elif payment_method == "card":
-            # Retrieve card details from the request data
-            # card_number = request.data.get("card_number")
-            # card_expiry = request.data.get("card_expiry")
-            # card_cvv = request.data.get("card_cvv")
-            # card_holder_name = request.data.get("card_holder_name")
-
             # Implement logic to process the card payment
 
             # Generate a QR code based on the payment details
             qr_code = qrcode.make("Card Payment")
 
             # Save the QR code to a file or return it as a response
-            qr_code.save("payment_qrcode.png")
+            qr_code_path = f"payment_qrcode_{ticket_id}.png"
+            qr_code.save(qr_code_path)
 
             # Associate the payment with the ticket
             ticket.payment_status = "Pending"  # Set the payment status to pending or any appropriate value
-            ticket.qr_code = qr_code  # Save the generated QR code to the ticket
+            ticket.qr_code = qr_code_path  # Save the QR code path to the ticket
             ticket.save()
 
             return Response({"success": True, "message": "Card payment successful."})
@@ -451,8 +474,8 @@ class MyPlayListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]  # Ensure the user is authenticated
 
     def get_queryset(self):
-        # Filter plays by the currently authenticated user
-        return Play.objects.filter(user=self.request.user)
+        # Remove the filtering by user, so it lists all plays
+        return Play.objects.all()  # This returns all plays in the database
 
 
 class PlayCastViewSet(viewsets.ViewSet):
@@ -727,7 +750,7 @@ class MyStreamListView(generics.ListAPIView):
 
     def get_queryset(self):
         # Filter plays by the currently authenticated user
-        return Video.objects.filter(user=self.request.user)
+        return Video.objects.all()
 
 
 class VideoPaymentViewSet(viewsets.ViewSet):

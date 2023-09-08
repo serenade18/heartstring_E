@@ -1,5 +1,8 @@
+from datetime import datetime
+
 from django.contrib.auth.hashers import make_password
 from django.utils import timezone
+from django.utils.timezone import make_aware
 from djoser.serializers import UserCreateSerializer, UserSerializer
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
@@ -42,6 +45,14 @@ class CustomUserSerializer(UserSerializer):
         last_login = representation.get('last_login')
 
         if last_login:
+            if isinstance(last_login, str):
+                # If last_login is a string, try to parse it into a datetime object
+                last_login = timezone.make_aware(timezone.datetime.fromisoformat(last_login))
+
+            if not timezone.is_aware(last_login):
+                # If it's still not aware, assume it's in the default timezone
+                last_login = make_aware(last_login, timezone.get_current_timezone())
+
             formatted_last_login = timezone.localtime(last_login).strftime('%Y-%m-%d %H:%M:%S')
             representation['last_login'] = formatted_last_login
 
@@ -82,16 +93,16 @@ class PlaySerializer(serializers.ModelSerializer):
 
 
 class MyPlaySerializer(serializers.ModelSerializer):
-    user = UserCreateSerializer(read_only=True)
+    # user = UserCreateSerializer(read_only=True)
 
     class Meta:
         model = Play
         fields = '__all__'
 
-    def to_representation(self, instance):
-        response = super().to_representation(instance)
-        response["user"] = UserCreateSerializer(instance.user_id).data
-        return response
+    # def to_representation(self, instance):
+    #     response = super().to_representation(instance)
+    #     response["user"] = UserCreateSerializer(instance.user).data  # Use 'instance.user' here
+    #     return response
 
 
 class PlayCastSerializer(serializers.ModelSerializer):
@@ -140,8 +151,8 @@ class PlayDateSerializer(serializers.ModelSerializer):
 
 
 class TicketsSerializer(serializers.ModelSerializer):
-    user = UserCreateSerializer(read_only=True)
-    play = PlaySerializer(read_only=True)
+    # user = UserCreateSerializer(read_only=True)
+    # play = PlaySerializer(read_only=True)
 
     class Meta:
         model = Ticket
@@ -178,16 +189,17 @@ class VideoSerializer(serializers.ModelSerializer):
 
 
 class MyStreamSerializer(serializers.ModelSerializer):
-    user = UserCreateSerializer(read_only=True)
+    # user = UserCreateSerializer(read_only=True)
 
     class Meta:
         model = Video
         fields = '__all__'
+    #     
 
-    def to_representation(self, instance):
-        response = super().to_representation(instance)
-        response["user"] = UserCreateSerializer(instance.user_id).data
-        return response
+    # def to_representation(self, instance):
+    #     response = super().to_representation(instance)
+    #     response["user"] = UserCreateSerializer(instance.user_id).data
+    #     return response
 
 
 class VideoCastSerializer(serializers.ModelSerializer):

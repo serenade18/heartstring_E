@@ -130,7 +130,6 @@ class Ticket(models.Model):
 
     # Additional fields for tracking purchase and payment status
     purchased = models.BooleanField(default=False)
-    payment_id = models.CharField(max_length=50, blank=True, null=True)
 
     added_on = models.DateTimeField(auto_now_add=True)
     objects = models.Manager()
@@ -142,7 +141,6 @@ class Ticket(models.Model):
 
 class Payment(models.Model):
     id = models.AutoField(primary_key=True)
-    payment_id = models.CharField(max_length=50)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE)
     user = models.ForeignKey(UserAccount, on_delete=models.CASCADE,default=None)
