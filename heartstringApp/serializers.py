@@ -176,7 +176,8 @@ class TicketsSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         response = super().to_representation(instance)
-        response["user"] = UserCreateSerializer(instance.user_id).data
+        # response["user"] = UserCreateSerializer(instance.user_id).data
+        response["user"] = UserCreateSerializer(UserAccount.objects.get(id=instance.user_id)).data
         response["play"] = PlaySerializer(instance.play_id).data
         return response
 
