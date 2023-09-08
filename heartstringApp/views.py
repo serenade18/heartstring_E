@@ -6,7 +6,8 @@ from datetime import datetime
 from io import BytesIO
 
 import qrcode
-from django.contrib.sites import requests
+import requests
+# from django.contrib.sites import requests
 from django.core.files.base import ContentFile
 from django.shortcuts import render, get_object_or_404
 from djoser.views import UserViewSet
@@ -118,31 +119,6 @@ class TicketViewSet(viewsets.ViewSet):
 
         return Response(response_dict)
 
-
-    # def create(self, request):
-    #     try:
-    #         serializer = TicketsSerializer(data=request.data, context={"request": request})
-    #         serializer.is_valid(raise_exception=True)
-    #         ticket = serializer.save(user=request.user)
-    #
-    #         # Generate QR code after successful payment
-    #         if ticket.purchased:
-    #             qr_code_data = f"M-Pesa Shortcode: {ticket.mpesa_shortcode}\n"
-    #             qr_code_data += f"Customer Name: {request.user.username}\n"
-    #             qr_code_data += f"Ticket Number/ID: {ticket.ticket_number}\n"
-    #             qr_code_data += f"Number of Tickets: {ticket.number_of_tickets}\n"
-    #
-    #             qr_code_image = generate_qr_code(qr_code_data)
-    #
-    #             # Save the QR code to the ticket
-    #             ticket.qr_code.save("qr_code.png", ContentFile(qr_code_image))
-    #             ticket.save()
-    #
-    #         dict_response = {"error": False, "message": "Ticket Bought Successfully"}
-    #     except:
-    #         dict_response = {"error": True, "message": "Error During Saving Ticket Data"}
-    #
-    #     return Response(dict_response)
     def create(self, request):
         try:
             serializer = TicketsSerializer(data=request.data, context={"request": request})
@@ -197,95 +173,248 @@ class PaymentViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["post"])
     def initiate_payment(self, request):
-        ticket_id = request.data.get("ticket_id")
-        ticket = get_object_or_404(Ticket, id=ticket_id, user=request.user)
+        # Replace 'ticket_id' with the actual ticket ID you want to associate with the payment
+        ticket_id = request.data.get('ticket_id')
 
-        payment_method = request.data.get("payment_method")
-        if payment_method == "mpesa":
-            # First call: Get SID
-            url_get_sid = "https://apis.ipayafrica.com/payments/v2/transact"
+        try:
+            # Retrieve the Ticket object based on the provided ID
+            ticket = Ticket.objects.get(pk=ticket_id)
+        except Ticket.DoesNotExist:
+            return Response({"error": True, "message": "Ticket not found"}, status=status.HTTP_404_NOT_FOUND)
 
-            payload_get_sid = {
-                "amount": str(ticket.total_amount),
-                "oid": str(ticket_id),
-                "inv": str(ticket_id),
-                "vid": "hstring",  # Replace with your vendor ID
-                "curr": "KES",
+        # Retrieve user's phone from the authenticated user
+        user_phone = request.user.phone
+
+        # Define your transaction parameters here
+        live = "1"
+        oid = str(ticket.id)  # Use the retrieved Ticket object to get the ID
+        inv = ticket.ticket_number  # Use the retrieved Ticket object to get the ticket number
+        amount = str(ticket.price)  # Use the retrieved Ticket object to get the price
+        tel = user_phone
+        eml = ticket.email
+        vid = "hstring"  # Replace with your Vendor ID
+        curr = "KES"
+        p1 = ""
+        p2 = ""
+        p3 = ""
+        p4 = ""
+        cst = "0"
+        crl = "0"
+        autopay = "1"
+        cbk = "http://heartstringsentertainment.co.ke"  # Replace with your callback URL
+
+        data_string = live + oid + inv + amount + tel + eml + vid + curr + p1 + p2 + p3 + p4 + cst + cbk
+
+        hash_key = "V5BHqdsbRBSc2#9rkky7kC2$NQ%fEEg8"  # Replace with your secret key
+
+        # Convert hashKey and dataString to bytes
+        hash_key_bytes = hash_key.encode()
+        data_string_bytes = data_string.encode()
+
+        # Create an HMAC-SHA256 hasher
+        hasher = hmac.new(hash_key_bytes, data_string_bytes, hashlib.sha256)
+
+        # Get the generated hash in hexadecimal format
+        generated_hash = hasher.hexdigest()
+
+        # Include the 'hash' parameter in your request data
+        request_data = {
+            'live': live,
+            'oid': oid,
+            'inv': inv,
+            'amount': amount,
+            'tel': tel,
+            'eml': eml,
+            'vid': vid,
+            'curr': curr,
+            'p1': p1,
+            'p2': p2,
+            'p3': p3,
+            'p4': p4,
+            'cst': cst,
+            'crl': crl,
+            'hash': generated_hash,  # Include the generated hash
+            'autopay': autopay,
+            'cbk': cbk
+        }
+
+        # Make a POST request to your payment gateway
+        response = requests.post('https://apis.ipayafrica.com/payments/v2/transact', data=request_data)
+
+        # Try to extract the SID from the response
+        sid = response.json().get('data', {}).get('sid')
+
+        if sid:
+            # Now, use the same method to hash the phone, sid, and vid
+            data_string_stk = user_phone + vid + sid
+            hasher_stk = hmac.new(hash_key_bytes, data_string_stk.encode(), hashlib.sha256)
+            generated_hash_stk = hasher_stk.hexdigest()
+
+            # Include the 'hash' parameter in your request data for STK PUSH
+            request_data_stk = {
+                'phone': user_phone,
+                'sid': sid,
+                'vid': vid,
+                'hash': generated_hash_stk,
             }
 
-            # Generate the hash using HMAC-SHA256 algorithm
-            hash_data = "".join(f"{key}{value}" for key, value in payload_get_sid.items() if key != "hash")
-            secret_key = "YOUR_SECRET_KEY"  # Replace with your secret key
-            hash_string = hmac.new(secret_key.encode(), hash_data.encode(), hashlib.sha256).hexdigest()
+            # Make a POST request to your STK PUSH endpoint
+            response_stk = requests.post('https://apis.ipayafrica.com/payments/v2/transact/push/mpesa',
+                                         json=request_data_stk)
+            print(request_data_stk)
+            print(response_stk.text)
 
-            payload_get_sid["hash"] = hash_string
-
-            response_get_sid = requests.post(url_get_sid, json=payload_get_sid)
-            if response_get_sid.status_code == 200:
-                response_data_sid = response_get_sid.json()
-                sid = response_data_sid.get("sid")
-            else:
-                return Response({"success": False, "message": "Error retrieving SID."})
-
-            # Second call: Initiate payment
-            url_push_payment = "https://apis.ipayafrica.com/payments/v2/transact/push/mpesa"
-
-            payload_push_payment = {
-                "phone": request.user.phone,
-                "sid": sid,
-                "vid": "hstring",  # Replace with your vendor ID
-            }
-
-            # Generate the hash for the second call
-            hash_data_push = "".join(f"{key}{value}" for key, value in payload_push_payment.items() if key != "hash")
-            hash_string_push = hmac.new(secret_key.encode(), hash_data_push.encode(), hashlib.sha256).hexdigest()
-
-            payload_push_payment["hash"] = hash_string_push
-
-            response_push_payment = requests.post(url_push_payment, json=payload_push_payment)
-            if response_push_payment.status_code == 200:
-                response_data_push = response_push_payment.json()
-
-                if response_data_push.get("status") == 1:
-                    # Payment request successful
-                    # Generate a QR code based on the payment details
-                    qr_code_data = response_data_push.get("text")
-                    qr_code = qrcode.make(qr_code_data)
-
-                    # Save the QR code to a file or return it as a response
-                    qr_code_path = f"payment_qrcode_{ticket_id}.png"
-                    qr_code.save(qr_code_path)
-
-                    # Associate the payment with the ticket
-                    ticket.payment_status = "Pending"
-                    ticket.qr_code = qr_code_path  # Save the QR code path to the ticket
-                    ticket.save()
-
-                    return Response({"success": True, "message": "Payment request sent to MPESA number."})
+            # Handle the STK PUSH response
+            if response_stk.status_code == 200:
+                response_data_stk = response_stk.json()
+                header_status_stk = response_data_stk.get('header_status')
+                if header_status_stk == '200':
+                    return Response({"error": False, "message": response_data_stk.get('text')})
                 else:
-                    return Response({"success": False, "message": "Payment request failed."})
+                    return Response({"error": True, "message": "STK PUSH request failed"},
+                                    status=status.HTTP_400_BAD_REQUEST)
             else:
-                return Response({"success": False, "message": "Error occurred during payment request."})
-
-        elif payment_method == "card":
-            # Implement logic to process the card payment
-
-            # Generate a QR code based on the payment details
-            qr_code = qrcode.make("Card Payment")
-
-            # Save the QR code to a file or return it as a response
-            qr_code_path = f"payment_qrcode_{ticket_id}.png"
-            qr_code.save(qr_code_path)
-
-            # Associate the payment with the ticket
-            ticket.payment_status = "Pending"  # Set the payment status to pending or any appropriate value
-            ticket.qr_code = qr_code_path  # Save the QR code path to the ticket
-            ticket.save()
-
-            return Response({"success": True, "message": "Card payment successful."})
+                return Response({"error": True, "message": "STK PUSH request failed"},
+                                status=status.HTTP_400_BAD_REQUEST)
         else:
-            # Invalid payment method, return an error response
-            return Response({"success": False, "message": "Invalid payment method."})
+            return Response({"error": True, "message": "SID not found in response"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # # Handle the response and create a Payment instance if successful
+        # if response.status_code == 200:
+        #     # Print the entire JSON response to inspect its structure
+        #     print("Response JSON:", response.json())
+        #
+        #     # Try to extract the SID from the response
+        #     sid = response.json().get('sid')
+        #
+        #     if sid:
+        #         # Now, use the same method to hash the phone, sid, and vid
+        #         data_string_stk = user_phone + vid + sid
+        #         hasher_stk = hmac.new(hash_key_bytes, data_string_stk.encode(), hashlib.sha256)
+        #         generated_hash_stk = hasher_stk.hexdigest()
+        #
+        #         # Include the 'hash' parameter in your request data for STK PUSH
+        #         request_data_stk = {
+        #             'phone': user_phone,
+        #             'sid': sid,
+        #             'vid': vid,
+        #             'hash': generated_hash_stk,
+        #         }
+        #
+        #         # Make a POST request to your STK PUSH endpoint
+        #         response_stk = requests.post('https://apis.ipayafrica.com/payments/v2/transact/push/mpesa',
+        #                                      json=request_data_stk)
+        #         print(request_data_stk)
+        #
+        #         # Handle the STK PUSH response
+        #         if response_stk.status_code == 200:
+        #             response_data_stk = response_stk.json()
+        #             header_status_stk = response_data_stk.get('header_status')
+        #             if header_status_stk == '200':
+        #                 return Response({"error": False, "message": response_data_stk.get('text')})
+        #             else:
+        #                 return Response({"error": True, "message": "STK PUSH request failed"},
+        #                                 status=status.HTTP_400_BAD_REQUEST)
+        #         else:
+        #             return Response({"error": True, "message": "STK PUSH request failed"},
+        #                             status=status.HTTP_400_BAD_REQUEST)
+        #     else:
+        #         return Response({"error": True, "message": "SID not found in response"},
+        #                         status=status.HTTP_400_BAD_REQUEST)
+        # else:
+        #     return Response({"error": True, "message": "Payment initiation failed"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # def initiate_payment(self, request):
+    #     ticket_id = request.data.get("ticket_id")
+    #     ticket = get_object_or_404(Ticket, id=ticket_id, user=request.user)
+    #
+    #     payment_method = request.data.get("payment_method")
+    #     if payment_method == "mpesa":
+    #         # First call: Get SID
+    #         url_get_sid = "https://apis.ipayafrica.com/payments/v2/transact"
+    #
+    #         payload_get_sid = {
+    #             "amount": str(ticket.total_amount),
+    #             "oid": str(ticket_id),
+    #             "inv": str(ticket_id),
+    #             "vid": "hstring",  # Replace with your vendor ID
+    #             "curr": "KES",
+    #         }
+    #
+    #         # Generate the hash using HMAC-SHA256 algorithm
+    #         hash_data = "".join(f"{key}{value}" for key, value in payload_get_sid.items() if key != "hash")
+    #         secret_key = "YOUR_SECRET_KEY"  # Replace with your secret key
+    #         hash_string = hmac.new(secret_key.encode(), hash_data.encode(), hashlib.sha256).hexdigest()
+    #
+    #         payload_get_sid["hash"] = hash_string
+    #
+    #         response_get_sid = requests.post(url_get_sid, json=payload_get_sid)
+    #         if response_get_sid.status_code == 200:
+    #             response_data_sid = response_get_sid.json()
+    #             sid = response_data_sid.get("sid")
+    #         else:
+    #             return Response({"success": False, "message": "Error retrieving SID."})
+    #
+    #         # Second call: Initiate payment
+    #         url_push_payment = "https://apis.ipayafrica.com/payments/v2/transact/push/mpesa"
+    #
+    #         payload_push_payment = {
+    #             "phone": request.user.phone,
+    #             "sid": sid,
+    #             "vid": "hstring",  # Replace with your vendor ID
+    #         }
+    #
+    #         # Generate the hash for the second call
+    #         hash_data_push = "".join(f"{key}{value}" for key, value in payload_push_payment.items() if key != "hash")
+    #         hash_string_push = hmac.new(secret_key.encode(), hash_data_push.encode(), hashlib.sha256).hexdigest()
+    #
+    #         payload_push_payment["hash"] = hash_string_push
+    #
+    #         response_push_payment = requests.post(url_push_payment, json=payload_push_payment)
+    #         if response_push_payment.status_code == 200:
+    #             response_data_push = response_push_payment.json()
+    #
+    #             if response_data_push.get("status") == 1:
+    #                 # Payment request successful
+    #                 # Generate a QR code based on the payment details
+    #                 qr_code_data = response_data_push.get("text")
+    #                 qr_code = qrcode.make(qr_code_data)
+    #
+    #                 # Save the QR code to a file or return it as a response
+    #                 qr_code_path = f"payment_qrcode_{ticket_id}.png"
+    #                 qr_code.save(qr_code_path)
+    #
+    #                 # Associate the payment with the ticket
+    #                 ticket.payment_status = "Pending"
+    #                 ticket.qr_code = qr_code_path  # Save the QR code path to the ticket
+    #                 ticket.save()
+    #
+    #                 return Response({"success": True, "message": "Payment request sent to MPESA number."})
+    #             else:
+    #                 return Response({"success": False, "message": "Payment request failed."})
+    #         else:
+    #             return Response({"success": False, "message": "Error occurred during payment request."})
+    #
+    #     elif payment_method == "card":
+    #         # Implement logic to process the card payment
+    #
+    #         # Generate a QR code based on the payment details
+    #         qr_code = qrcode.make("Card Payment")
+    #
+    #         # Save the QR code to a file or return it as a response
+    #         qr_code_path = f"payment_qrcode_{ticket_id}.png"
+    #         qr_code.save(qr_code_path)
+    #
+    #         # Associate the payment with the ticket
+    #         ticket.payment_status = "Pending"  # Set the payment status to pending or any appropriate value
+    #         ticket.qr_code = qr_code_path  # Save the QR code path to the ticket
+    #         ticket.save()
+    #
+    #         return Response({"success": True, "message": "Card payment successful."})
+    #     else:
+    #         # Invalid payment method, return an error response
+    #         return Response({"success": False, "message": "Invalid payment method."})
 
     def retrieve(self, request, pk=None):
         queryset = Payment.objects.filter(user=request.user)
@@ -800,6 +929,7 @@ class HomeApiViewSet(viewsets.ViewSet):
             dict_response = {"error": True, "message": "Error performing task"}
 
         return Response(dict_response)
+
 
 play_list = PlayViewSet.as_view({"get": "list"})
 play_create = PlayViewSet.as_view({"post": "create"})

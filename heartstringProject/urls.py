@@ -29,6 +29,7 @@ urlpatterns = [
     path('auth/', include('djoser.urls.authtoken')),
     path('auth/', include('djoser.social.urls')),
     path('auth/superuser/', SuperUserRegistrationView.as_view({'post': 'create_superuser'}), name='superuser-registration'),
+    path('api/payments/initiate_payment/', views.PaymentViewSet.as_view({'post': 'initiate_payment'}), name='initiate_payment'),
     path('api/update-user/', UserAccountUpdateView.as_view(), name='update-user'),
     path('api/delete-user/<int:pk>/', UserAccountDeleteView.as_view(), name='user-delete'),
     path('api/my-plays/', MyPlayListView.as_view(), name='my-plays'),
