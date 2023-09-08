@@ -12,11 +12,6 @@ from heartstringApp.models import UserAccount, Play, PlayCast, Bogof, Ticket, Pa
 
 User = get_user_model()
 
-# class UserCreateSerializer(UserCreateSerializer):
-#     class Meta(UserCreateSerializer.Meta):
-#         model = User
-#         fields = ('id', 'email', 'first_name', 'last_name', 'phone', 'password')
-
 class UserCreateSerializer(UserCreateSerializer):
     user_type = serializers.CharField(default='normal', required=False)  # Add user_type field with default value
 
@@ -150,19 +145,6 @@ class PlayDateSerializer(serializers.ModelSerializer):
         return response
 
 
-# class TicketsSerializer(serializers.ModelSerializer):
-#     # user = UserCreateSerializer(read_only=True)
-#     # play = PlaySerializer(read_only=True)
-#
-#     class Meta:
-#         model = Ticket
-#         fields = '__all__'
-#
-#     def to_representation(self, instance):
-#         response = super().to_representation(instance)
-#         response["user"] = UserCreateSerializer(instance.user_id).data
-#         response["play"] = PlaySerializer(instance.play_id).data
-#         return response
 class TicketsSerializer(serializers.ModelSerializer):
     user = UserCreateSerializer(read_only=True)
     play = PlaySerializer(read_only=True)
@@ -176,7 +158,6 @@ class TicketsSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         response = super().to_representation(instance)
-        # response["user"] = UserCreateSerializer(instance.user_id).data
         response["user"] = UserCreateSerializer(UserAccount.objects.get(id=instance.user_id)).data
         response["play"] = PlaySerializer(instance.play_id).data
         return response
