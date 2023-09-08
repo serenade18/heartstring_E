@@ -150,13 +150,29 @@ class PlayDateSerializer(serializers.ModelSerializer):
         return response
 
 
+# class TicketsSerializer(serializers.ModelSerializer):
+#     # user = UserCreateSerializer(read_only=True)
+#     # play = PlaySerializer(read_only=True)
+#
+#     class Meta:
+#         model = Ticket
+#         fields = '__all__'
+#
+#     def to_representation(self, instance):
+#         response = super().to_representation(instance)
+#         response["user"] = UserCreateSerializer(instance.user_id).data
+#         response["play"] = PlaySerializer(instance.play_id).data
+#         return response
 class TicketsSerializer(serializers.ModelSerializer):
-    # user = UserCreateSerializer(read_only=True)
-    # play = PlaySerializer(read_only=True)
+    user = UserCreateSerializer(read_only=True)
+    play = PlaySerializer(read_only=True)
 
     class Meta:
         model = Ticket
         fields = '__all__'
+        extra_kwargs = {
+            'qr_code': {'required': False}  # Mark qr_code as not required
+        }
 
     def to_representation(self, instance):
         response = super().to_representation(instance)

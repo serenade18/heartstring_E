@@ -1,4 +1,5 @@
 from django.db import models
+import uuid
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 
 
@@ -126,10 +127,13 @@ class Ticket(models.Model):
     email = models.EmailField()
     qr_code = models.ImageField(upload_to='qr_codes/')
     user = models.ForeignKey(UserAccount, on_delete=models.CASCADE, default=None)
-    play = models.ForeignKey(Play, on_delete=models.CASCADE, default=None)
+    play_id = models.ForeignKey(Play, on_delete=models.CASCADE, default=None)
 
     # Additional fields for tracking purchase and payment status
     purchased = models.BooleanField(default=False)
+
+    # Add a ticket_number field
+    ticket_number = models.CharField(max_length=10, unique=True, default=uuid.uuid4().hex[:10].upper())
 
     added_on = models.DateTimeField(auto_now_add=True)
     objects = models.Manager()

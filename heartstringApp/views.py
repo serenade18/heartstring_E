@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import uuid
 from datetime import datetime
 from io import BytesIO
 
@@ -147,23 +148,24 @@ class TicketViewSet(viewsets.ViewSet):
             serializer = TicketsSerializer(data=request.data, context={"request": request})
             serializer.is_valid(raise_exception=True)
 
-            # Save the ticket with a default QR code
-            ticket = serializer.save(user=request.user)
+            # Generate a unique ticket number for the current play
+            play = serializer.validated_data.get('play')  # Assuming you have a 'play' field in your serializer
+            ticket_number = str(uuid.uuid4().hex[:10].upper())  # Generate a unique ticket number
 
-            # Generate and set the default QR code
+            # Save the ticket with the generated ticket number
+            ticket = serializer.save(user=request.user, ticket_number=ticket_number)
             self.generate_default_qr_code(ticket)
 
             dict_response = {"error": False, "message": "Ticket Bought Successfully"}
-        except:
-            dict_response = {"error": True, "message": "Error During Saving Ticket Data"}
+        except Exception as e:
+            dict_response = {"error": True, "message": f"Error During Saving Ticket Data: {str(e)}"}
 
         return Response(dict_response)
 
-    # Custom method to generate and set a default QR code for the ticket
+        # Custom method to generate and set a default QR code for the ticket
+
     def generate_default_qr_code(self, ticket):
         qr_code_data = f"Default QR Code Data for Ticket {ticket.ticket_number}"
-
-        # Assuming you have a function generate_qr_code that generates the QR code
         qr_code_image = generate_qr_code(qr_code_data)
 
         # Save the default QR code to the ticket
