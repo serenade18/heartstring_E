@@ -175,6 +175,7 @@ class PaymentViewSet(viewsets.ViewSet):
     def initiate_payment(self, request):
         # Replace 'ticket_id' with the actual ticket ID you want to associate with the payment
         ticket_id = request.data.get('ticket_id')
+        amount = request.data.get('amount')
 
         try:
             # Retrieve the Ticket object based on the provided ID
@@ -184,12 +185,12 @@ class PaymentViewSet(viewsets.ViewSet):
 
         # Retrieve user's phone from the authenticated user
         user_phone = request.user.phone
-
+        # OEgn$6shMB9( :merchant password
         # Define your transaction parameters here
         live = "1"
         oid = str(ticket.id)  # Use the retrieved Ticket object to get the ID
         inv = ticket.ticket_number  # Use the retrieved Ticket object to get the ticket number
-        amount = str(ticket.price)  # Use the retrieved Ticket object to get the price
+        # amount = str(ticket.price)  # Use the retrieved Ticket object to get the price
         tel = user_phone
         eml = ticket.email
         vid = "hstring"  # Replace with your Vendor ID
@@ -199,7 +200,7 @@ class PaymentViewSet(viewsets.ViewSet):
         p3 = ""
         p4 = ""
         cst = "0"
-        crl = "0"
+        crl = "1"
         autopay = "1"
         cbk = "http://heartstringsentertainment.co.ke"  # Replace with your callback URL
 
