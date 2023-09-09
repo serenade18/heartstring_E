@@ -261,21 +261,23 @@ class PaymentViewSet(viewsets.ViewSet):
             # Make a POST request to your STK PUSH endpoint
             response_stk = requests.post('https://apis.ipayafrica.com/payments/v2/transact/push/mpesa',
                                          json=request_data_stk)
-            print(request_data_stk)
-            print(response_stk.text)
+            # print(request_data_stk)
+            # print(response_stk.text)
 
-            # Handle the STK PUSH response
             if response_stk.status_code == 200:
                 response_data_stk = response_stk.json()
                 header_status_stk = response_data_stk.get('header_status')
-                if header_status_stk == '200':
-                    return Response(
-                        {"error": False, "message": "STK PUSH request successful"})  # Change the success message
+                response_status_stk = response_data_stk.get('text')
+                # print(response_status_stk)
+                if header_status_stk == 200:
+                    return Response({"error": False, "message": str(response_status_stk)})
                 else:
-                    return Response({"error": True, "message": "STK PUSH request failed"},
-                                    status=status.HTTP_400_BAD_REQUEST)
+                    return Response(
+                        {"error": False, "message": "STK PUSH request failed with status: " + str(header_status_stk)},
+                        status=status.HTTP_400_BAD_REQUEST)
             else:
-                return Response({"error": True, "message": "STK PUSH request failed"},
+                return Response({"error": True, "message": "STK PUSH request failed with status code: " + str(
+                    response_stk.status_code)},
                                 status=status.HTTP_400_BAD_REQUEST)
 
         else:
