@@ -269,61 +269,19 @@ class PaymentViewSet(viewsets.ViewSet):
                 response_data_stk = response_stk.json()
                 header_status_stk = response_data_stk.get('header_status')
                 if header_status_stk == '200':
-                    return Response({"error": False, "message": response_data_stk.get('text')})
+                    return Response(
+                        {"error": False, "message": "STK PUSH request successful"})  # Change the success message
                 else:
                     return Response({"error": True, "message": "STK PUSH request failed"},
                                     status=status.HTTP_400_BAD_REQUEST)
             else:
                 return Response({"error": True, "message": "STK PUSH request failed"},
                                 status=status.HTTP_400_BAD_REQUEST)
+
         else:
             return Response({"error": True, "message": "SID not found in response"},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        # # Handle the response and create a Payment instance if successful
-        # if response.status_code == 200:
-        #     # Print the entire JSON response to inspect its structure
-        #     print("Response JSON:", response.json())
-        #
-        #     # Try to extract the SID from the response
-        #     sid = response.json().get('sid')
-        #
-        #     if sid:
-        #         # Now, use the same method to hash the phone, sid, and vid
-        #         data_string_stk = user_phone + vid + sid
-        #         hasher_stk = hmac.new(hash_key_bytes, data_string_stk.encode(), hashlib.sha256)
-        #         generated_hash_stk = hasher_stk.hexdigest()
-        #
-        #         # Include the 'hash' parameter in your request data for STK PUSH
-        #         request_data_stk = {
-        #             'phone': user_phone,
-        #             'sid': sid,
-        #             'vid': vid,
-        #             'hash': generated_hash_stk,
-        #         }
-        #
-        #         # Make a POST request to your STK PUSH endpoint
-        #         response_stk = requests.post('https://apis.ipayafrica.com/payments/v2/transact/push/mpesa',
-        #                                      json=request_data_stk)
-        #         print(request_data_stk)
-        #
-        #         # Handle the STK PUSH response
-        #         if response_stk.status_code == 200:
-        #             response_data_stk = response_stk.json()
-        #             header_status_stk = response_data_stk.get('header_status')
-        #             if header_status_stk == '200':
-        #                 return Response({"error": False, "message": response_data_stk.get('text')})
-        #             else:
-        #                 return Response({"error": True, "message": "STK PUSH request failed"},
-        #                                 status=status.HTTP_400_BAD_REQUEST)
-        #         else:
-        #             return Response({"error": True, "message": "STK PUSH request failed"},
-        #                             status=status.HTTP_400_BAD_REQUEST)
-        #     else:
-        #         return Response({"error": True, "message": "SID not found in response"},
-        #                         status=status.HTTP_400_BAD_REQUEST)
-        # else:
-        #     return Response({"error": True, "message": "Payment initiation failed"}, status=status.HTTP_400_BAD_REQUEST)
 
     # def initiate_payment(self, request):
     #     ticket_id = request.data.get("ticket_id")
