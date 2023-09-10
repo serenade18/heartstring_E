@@ -168,12 +168,19 @@ class PaymentViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        payments = Payment.objects.filter(user=request.user)
+        # Check if the user is an admin
+        if request.user.user_type == 'admin':
+            # Admin users can access all payments
+            payments = Payment.objects.all()
+        else:
+            # Regular users can only access their own payments
+            payments = Payment.objects.filter(user=request.user)
+
         serializer = PaymentSerializer(payments, many=True, context={"request": request})
 
-        response_dict = {"error": False, "message": "All Payments List Data", "data": serializer.data}
+        response_dict = {"error": False, "message": "Payments List Data", "data": serializer.data}
 
-        return Response(response_dict)
+        return Response(response_dict, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"])
     def initiate_payment(self, request):
@@ -347,6 +354,16 @@ class PaymentViewSet(viewsets.ViewSet):
                                         ticket_details += f"Seat Numbers: {ticket.seat_numbers}\n"
                                         ticket_details += f"Mode of Payment: {response_data_second_callback.get('channel')}"
 
+                                        # Store payment information in your database
+                                        payment = Payment.objects.create(
+                                            ref_number=response_data_second_callback.get('txncd'),
+                                            payment_mode=response_data_second_callback.get('channel'),
+                                            msisdn=response_data_second_callback.get('msisdn_id'),
+                                            msisdn_idnum=response_data_second_callback.get('msisdn_idnum'),
+                                            amount=response_data_second_callback.get('mc'),
+                                            ticket=ticket,
+                                            user=request.user,
+                                        )
 
                                         # Update the ticket details with information you want to include in the QR code
                                         ticket.details = ticket_details

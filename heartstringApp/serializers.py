@@ -164,7 +164,7 @@ class TicketsSerializer(serializers.ModelSerializer):
 
 
 class PaymentSerializer(serializers.ModelSerializer):
-    user = UserCreateSerializer(read_only=True)
+    user = UserAccountSerializer(read_only=True)  # Use the UserAccountSerializer for the user field
 
     class Meta:
         model = Payment
@@ -172,8 +172,22 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         response = super().to_representation(instance)
-        response["user"] = UserCreateSerializer(instance.user_id).data
+        # No need to use UserCreateSerializer or UserAccountSerializer here, just use the instance directly
+        response["user"] = instance.user_id  # Assuming that user_id is the UserAccount instance
         return response
+
+
+# class PaymentSerializer(serializers.ModelSerializer):
+#     user = UserCreateSerializer(read_only=True)
+#
+#     class Meta:
+#         model = Payment
+#         fields = '__all__'
+#
+#     def to_representation(self, instance):
+#         response = super().to_representation(instance)
+#         response["user"] = UserCreateSerializer(instance.user_id).data
+#         return response
 
 
 class VideoSerializer(serializers.ModelSerializer):

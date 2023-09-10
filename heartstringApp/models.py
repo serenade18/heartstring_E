@@ -145,6 +145,10 @@ class Ticket(models.Model):
 
 class Payment(models.Model):
     id = models.AutoField(primary_key=True)
+    ref_number = models.CharField(max_length=255)
+    payment_mode = models.CharField(max_length=255)
+    msisdn = models.CharField(max_length=255)
+    msisdn_idnum = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE)
     user = models.ForeignKey(UserAccount, on_delete=models.CASCADE,default=None)
