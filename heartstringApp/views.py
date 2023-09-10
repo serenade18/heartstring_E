@@ -5,11 +5,12 @@ import uuid
 import re
 from datetime import datetime
 from io import BytesIO
+from time import sleep
 
 import qrcode
 import requests
 # from django.contrib.sites import requests
-from django.core.files.base import ContentFile
+from django.core.files.base import ContentFile, File
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
@@ -320,26 +321,88 @@ class PaymentViewSet(viewsets.ViewSet):
                                 'hash': callback_hash,  # Use the extracted hash
                             }
 
-                            # 7. Make a second POST request to the callback endpoint to get callback details
-                            response_second_callback = requests.post(
-                                'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
-                                json=request_data_second_callback)
-                            print(response_second_callback)
+                            # Define the maximum number of callback retries
+                            max_callback_retries = 3
+                            callback_retries = 0
 
-                            if response_second_callback.status_code == 200:
-                                response_data_second_callback = response_second_callback.json()
-                                # Process the second callback response as needed
-                                return Response({"error": False, "message": response_data_second_callback})
+                            while callback_retries < max_callback_retries:
+                                # 7. Make a second POST request to the callback endpoint to get callback details
+                                response_second_callback = requests.post(
+                                    'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
+                                    json=request_data_second_callback
+                                )
+                                print(response_second_callback.text)
 
-                            else:
-                                # Handle second callback error
-                                return Response({"error": True, "message": "Second Callback request failed"},
-                                                status=status.HTTP_400_BAD_REQUEST)
+                                if response_second_callback.status_code == 200:
+                                    response_data_second_callback = response_second_callback.json()
+                                    # Check if the status in the second callback response indicates completeness
+                                    if response_data_second_callback.get("status") == "aei7p7yrx4ae34":
+                                        # Status is complete, process the second callback response
+
+                                        # Construct the ticket details to include in the QR code
+                                        ticket_details = f"Ticket Number: {ticket.ticket_number}\n"
+                                        ticket_details += f"User Name: {request.user.first_name} {request.user.last_name}\n"
+                                        ticket_details += f"User Phone: {user_phone}\n"
+                                        ticket_details += f"Amount: {response_data_second_callback.get('mc')}\n"  # Assuming 'mc' is the amount
+                                        ticket_details += f"Seat Numbers: {ticket.seat_numbers}\n"
+                                        ticket_details += f"Mode of Payment: {response_data_second_callback.get('channel')}"
+
+
+                                        # Update the ticket details with information you want to include in the QR code
+                                        ticket.details = ticket_details
+                                        ticket.purchased = True  # Update purchased status to True
+                                        ticket.save()
+
+                                        # Generate a new QR code with the updated ticket details
+                                        qr = qrcode.QRCode(
+                                            version=1,
+                                            error_correction=qrcode.constants.ERROR_CORRECT_L,
+                                            box_size=10,
+                                            border=4,
+                                        )
+
+                                        qr.add_data(ticket_details)
+                                        qr.make(fit=True)
+
+                                        # Create a QR code image
+                                        qr_code_img = qr.make_image(fill_color="black", back_color="white")
+
+                                        # Save the QR code image to a file
+                                        qr_code_path = "{}.png".format(
+                                            ticket.ticket_number)  # Modify the path as needed
+                                        buffer = BytesIO()
+                                        qr_code_img.save(buffer, format="PNG")
+                                        ticket.qr_code.save(qr_code_path, File(buffer))
+
+                                        # Update the ticket with the file path to the QR code image
+                                        ticket.save()
+
+                                        # Return a response indicating successful payment
+                                        return Response({"error": False, "message": "Payment completed successfully"})
+
+                                    elif response_data_second_callback.get("status") == "bdi6p2yy76etrs":
+                                        # Status is incomplete, increment retry count and wait before retrying
+                                        callback_retries += 1
+                                        sleep(3)  # Wait for 3 seconds before retrying
+
+                                    else:
+                                        # Handle unexpected status, you might want to log this
+                                        return Response({"error": True, "message": "Unexpected callback status"},
+                                                        status=status.HTTP_400_BAD_REQUEST)
+
+                                else:
+                                    # Handle the second callback request error
+                                    return Response({"error": True, "message": "Second Callback request failed"},
+                                                    status=status.HTTP_400_BAD_REQUEST)
+
+                            # If the loop completes without breaking, it means max_callback_retries was reached
+                            return Response({"error": True, "message": "Max retries reached"},
+                                            status=status.HTTP_400_BAD_REQUEST)
+
                         else:
                             # Handle first callback error
                             return Response({"error": True, "message": "First Callback request failed"},
                                             status=status.HTTP_400_BAD_REQUEST)
-
                     else:
                         return Response(
                             {"error": True,
@@ -349,99 +412,6 @@ class PaymentViewSet(viewsets.ViewSet):
                     return Response({"error": True, "message": "STK PUSH request failed with status code: " + str(
                         response_stk.status_code)},
                                     status=status.HTTP_400_BAD_REQUEST)
-
-
-
-    # def initiate_payment(self, request):
-    #     ticket_id = request.data.get("ticket_id")
-    #     ticket = get_object_or_404(Ticket, id=ticket_id, user=request.user)
-    #
-    #     payment_method = request.data.get("payment_method")
-    #     if payment_method == "mpesa":
-    #         # First call: Get SID
-    #         url_get_sid = "https://apis.ipayafrica.com/payments/v2/transact"
-    #
-    #         payload_get_sid = {
-    #             "amount": str(ticket.total_amount),
-    #             "oid": str(ticket_id),
-    #             "inv": str(ticket_id),
-    #             "vid": "hstring",  # Replace with your vendor ID
-    #             "curr": "KES",
-    #         }
-    #
-    #         # Generate the hash using HMAC-SHA256 algorithm
-    #         hash_data = "".join(f"{key}{value}" for key, value in payload_get_sid.items() if key != "hash")
-    #         secret_key = "YOUR_SECRET_KEY"  # Replace with your secret key
-    #         hash_string = hmac.new(secret_key.encode(), hash_data.encode(), hashlib.sha256).hexdigest()
-    #
-    #         payload_get_sid["hash"] = hash_string
-    #
-    #         response_get_sid = requests.post(url_get_sid, json=payload_get_sid)
-    #         if response_get_sid.status_code == 200:
-    #             response_data_sid = response_get_sid.json()
-    #             sid = response_data_sid.get("sid")
-    #         else:
-    #             return Response({"success": False, "message": "Error retrieving SID."})
-    #
-    #         # Second call: Initiate payment
-    #         url_push_payment = "https://apis.ipayafrica.com/payments/v2/transact/push/mpesa"
-    #
-    #         payload_push_payment = {
-    #             "phone": request.user.phone,
-    #             "sid": sid,
-    #             "vid": "hstring",  # Replace with your vendor ID
-    #         }
-    #
-    #         # Generate the hash for the second call
-    #         hash_data_push = "".join(f"{key}{value}" for key, value in payload_push_payment.items() if key != "hash")
-    #         hash_string_push = hmac.new(secret_key.encode(), hash_data_push.encode(), hashlib.sha256).hexdigest()
-    #
-    #         payload_push_payment["hash"] = hash_string_push
-    #
-    #         response_push_payment = requests.post(url_push_payment, json=payload_push_payment)
-    #         if response_push_payment.status_code == 200:
-    #             response_data_push = response_push_payment.json()
-    #
-    #             if response_data_push.get("status") == 1:
-    #                 # Payment request successful
-    #                 # Generate a QR code based on the payment details
-    #                 qr_code_data = response_data_push.get("text")
-    #                 qr_code = qrcode.make(qr_code_data)
-    #
-    #                 # Save the QR code to a file or return it as a response
-    #                 qr_code_path = f"payment_qrcode_{ticket_id}.png"
-    #                 qr_code.save(qr_code_path)
-    #
-    #                 # Associate the payment with the ticket
-    #                 ticket.payment_status = "Pending"
-    #                 ticket.qr_code = qr_code_path  # Save the QR code path to the ticket
-    #                 ticket.save()
-    #
-    #                 return Response({"success": True, "message": "Payment request sent to MPESA number."})
-    #             else:
-    #                 return Response({"success": False, "message": "Payment request failed."})
-    #         else:
-    #             return Response({"success": False, "message": "Error occurred during payment request."})
-    #
-    #     elif payment_method == "card":
-    #         # Implement logic to process the card payment
-    #
-    #         # Generate a QR code based on the payment details
-    #         qr_code = qrcode.make("Card Payment")
-    #
-    #         # Save the QR code to a file or return it as a response
-    #         qr_code_path = f"payment_qrcode_{ticket_id}.png"
-    #         qr_code.save(qr_code_path)
-    #
-    #         # Associate the payment with the ticket
-    #         ticket.payment_status = "Pending"  # Set the payment status to pending or any appropriate value
-    #         ticket.qr_code = qr_code_path  # Save the QR code path to the ticket
-    #         ticket.save()
-    #
-    #         return Response({"success": True, "message": "Card payment successful."})
-    #     else:
-    #         # Invalid payment method, return an error response
-    #         return Response({"success": False, "message": "Invalid payment method."})
 
     def retrieve(self, request, pk=None):
         queryset = Payment.objects.filter(user=request.user)
