@@ -16,6 +16,7 @@ from heartstringApp.views import SuperUserRegistrationView, UserAccountUpdateVie
 router = routers.DefaultRouter()
 router.register("tickets", views.TicketViewSet, basename="tickets")
 router.register("payments", views.PaymentViewSet, basename="payments")
+router.register("video-payments", views.VideoPaymentViewSet, basename="video-payments")
 router.register("plays", views.PlayViewSet, basename="plays")
 router.register("videos", views.VideoViewSet, basename="videos")
 router.register("play_casts", views.PlayCastViewSet, basename="play_casts")
@@ -30,6 +31,7 @@ urlpatterns = [
     path('auth/', include('djoser.social.urls')),
     path('auth/superuser/', SuperUserRegistrationView.as_view({'post': 'create_superuser'}), name='superuser-registration'),
     path('api/payments/initiate_payment/', views.PaymentViewSet.as_view({'post': 'initiate_payment'}), name='initiate_payment'),
+    path('api/video-payments/initiate_payment/', views.VideoPaymentViewSet.as_view({'post': 'initiate_payment'}), name='initiate_payment'),
     path('api/update-user/', UserAccountUpdateView.as_view(), name='update-user'),
     path('api/delete-user/<int:pk>/', UserAccountDeleteView.as_view(), name='user-delete'),
     path('api/my-plays/', MyPlayListView.as_view(), name='my-plays'),

@@ -23,7 +23,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from heartstringApp import serializers
 from heartstringApp.models import Ticket, Payment, Play, Video, VideoPayment, PlayCast, Bogof, OtherOffers, PlayTime, \
-    VideoCast, VideoAvailability, UserAccount
+    VideoCast, VideoAvailability, UserAccount, VideoPayments
 from heartstringApp.serializers import TicketsSerializer, PaymentSerializer, PlaySerializer, \
     PlayCastSerializer, OfferSerializer, VideoSerializer, VideoCastSerializer, VideoPaymentSerializer, \
     VideoAvailabilitySerializer, OtherOfferSerializer, PlayDateSerializer, UserCreateSerializer, UserAccountSerializer, \
@@ -199,7 +199,7 @@ class PaymentViewSet(viewsets.ViewSet):
         # OEgn$6shMB9( :merchant password
         # Define your transaction parameters here
         live = "1"
-        oid = str(ticket.id)  # Use the retrieved Ticket object to get the ID
+        oid = str(ticket.ticket_number)  # Use the retrieved Ticket object to get the ID
         inv = ticket.ticket_number  # Use the retrieved Ticket object to get the ticket number
         # amount = str(ticket.price)  # Use the retrieved Ticket object to get the price
         tel = user_phone
@@ -273,8 +273,6 @@ class PaymentViewSet(viewsets.ViewSet):
             # Make a POST request to your STK PUSH endpoint
             response_stk = requests.post('https://apis.ipayafrica.com/payments/v2/transact/push/mpesa',
                                          json=request_data_stk)
-            # print(request_data_stk)
-            # print(response_stk.text)
 
             if response_stk.status_code == 200:
                 response_data_stk = response_stk.json()
@@ -283,9 +281,6 @@ class PaymentViewSet(viewsets.ViewSet):
                 if header_status_stk == 200:
                     # STK PUSH request initiated successfully
                     # Proceed to handle the callback action
-
-                    # 1. Extract the SID from the STK PUSH response
-                    # sid = response_data_stk.get('data', {}).get('sid')
 
                     if sid:
                         # 2. Calculate the hash for the callback
@@ -307,12 +302,10 @@ class PaymentViewSet(viewsets.ViewSet):
                             'sid': sid,
                             'hash': generated_hash_callback,
                         }
-                        print(request_data_callback)
 
                         response_callback = requests.post(
                             'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
                             json=request_data_callback)
-                        print(response_callback.text)
 
                         if response_callback.status_code == 400:
                             response_data_callback = response_callback.json()
@@ -338,7 +331,6 @@ class PaymentViewSet(viewsets.ViewSet):
                                     'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
                                     json=request_data_second_callback
                                 )
-                                print(response_second_callback.text)
 
                                 if response_second_callback.status_code == 200:
                                     response_data_second_callback = response_second_callback.json()
@@ -622,6 +614,7 @@ class MyPlayListView(generics.ListAPIView):
         # Filter plays that have associated tickets with the 'purchased' status
         # return Play.objects.filter(ticket__purchased=True, ticket__user=self.request.user)
         return Play.objects.filter(ticket__payment__user=self.request.user)
+
 
 class PlayCastViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
@@ -908,9 +901,215 @@ class VideoPaymentViewSet(viewsets.ViewSet):
         response_dict = {"error": False, "message": "All Payments List Data", "data": serializer.data}
         return Response(response_dict)
 
-    # @action(detail=False, methods=["post"])
-    # def initiate_payment(self, request):
-    #
+    @action(detail=False, methods=["post"])
+    def initiate_payment(self, request):
+        # Replace 'video_id' with the actual ticket ID you want to associate with the payment
+        video_id = request.data.get('video_id')
+        amount = request.data.get('amount')
+
+        try:
+            # Retrieve the Video object based on the provided ID
+            video = Video.objects.get(pk=video_id)
+        except Video.DoesNotExist:
+            return Response({"error": True, "message": "Video not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Retrieve user's phone from the authenticated user
+        user_phone = request.user.phone
+        user_email = request.user.email
+        # OEgn$6shMB9( :merchant password
+        # Define your transaction parameters here
+        live = "1"
+        oid = str(video.id)  # Use the retrieved Video object to get the ID
+        inv = str(video.id)  # Use the retrieved Video object to get the ticket number
+        tel = user_phone
+        eml = user_email
+        vid = "hstring"  # Replace with your Vendor ID
+        curr = "KES"
+        p1 = ""
+        p2 = ""
+        p3 = ""
+        p4 = ""
+        cst = "0"
+        crl = "1"
+        autopay = "1"
+        cbk = "http://heartstringsentertainment.co.ke"  # Replace with your callback URL
+
+        data_string = live + oid + inv + amount + tel + eml + vid + curr + p1 + p2 + p3 + p4 + cst + cbk
+
+        hash_key = "V5BHqdsbRBSc2#9rkky7kC2$NQ%fEEg8"  # Replace with your secret key
+
+        # Convert hashKey and dataString to bytes
+        hash_key_bytes = hash_key.encode()
+        data_string_bytes = data_string.encode()
+
+        # Create an HMAC-SHA256 hasher
+        hasher = hmac.new(hash_key_bytes, data_string_bytes, hashlib.sha256)
+
+        # Get the generated hash in hexadecimal format
+        generated_hash = hasher.hexdigest()
+
+        # Include the 'hash' parameter in your request data
+        request_data = {
+            'live': live,
+            'oid': oid,
+            'inv': inv,
+            'amount': amount,
+            'tel': tel,
+            'eml': eml,
+            'vid': vid,
+            'curr': curr,
+            'p1': p1,
+            'p2': p2,
+            'p3': p3,
+            'p4': p4,
+            'cst': cst,
+            'crl': crl,
+            'hash': generated_hash,  # Include the generated hash
+            'autopay': autopay,
+            'cbk': cbk
+        }
+
+        # Make a POST request to your payment gateway
+        response = requests.post('https://apis.ipayafrica.com/payments/v2/transact', data=request_data)
+        print(response.text)
+        print(request_data)
+
+        # Try to extract the SID from the response
+        sid = response.json().get('data', {}).get('sid')
+
+        if sid:
+            # Now, use the same method to hash the phone, sid, and vid
+            data_string_stk = user_phone + vid + sid
+            hasher_stk = hmac.new(hash_key_bytes, data_string_stk.encode(), hashlib.sha256)
+            generated_hash_stk = hasher_stk.hexdigest()
+
+            # Include the 'hash' parameter in your request data for STK PUSH
+            request_data_stk = {
+                'phone': user_phone,
+                'sid': sid,
+                'vid': vid,
+                'hash': generated_hash_stk,
+            }
+
+            # Make a POST request to your STK PUSH endpoint
+            response_stk = requests.post('https://apis.ipayafrica.com/payments/v2/transact/push/mpesa',
+                                         json=request_data_stk)
+            print(request_data_stk)
+            print(response_stk.text)
+
+            if response_stk.status_code == 200:
+                response_data_stk = response_stk.json()
+                header_status_stk = response_data_stk.get('header_status')
+                response_status_stk = response_data_stk.get('text')
+                if header_status_stk == 200:
+                    # STK PUSH request initiated successfully
+                    # Proceed to handle the callback action
+
+                    if sid:
+                        # 2. Calculate the hash for the callback
+                        data_string_callback = vid + sid  # Exclude the phone number
+
+                        # Convert hashKey and dataString to bytes
+                        hash_key_bytes = hash_key.encode()
+                        data_string_bytes = data_string_callback.encode()
+
+                        # Create an HMAC-SHA256 hasher for the callback
+                        hasher_callback = hmac.new(hash_key_bytes, data_string_bytes, hashlib.sha256)
+
+                        # Get the generated hash in hexadecimal format for the callback
+                        generated_hash_callback = hasher_callback.hexdigest()
+
+                        # 3. Include the 'hash' parameter in your request data for the callback
+                        request_data_callback = {
+                            'vid': vid,
+                            'sid': sid,
+                            'hash': generated_hash_callback,
+                        }
+                        print(request_data_callback)
+
+                        response_callback = requests.post(
+                            'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
+                            json=request_data_callback)
+                        print(response_callback.text)
+
+                        if response_callback.status_code == 400:
+                            response_data_callback = response_callback.json()
+
+                            # 5. Extract the hash from the callback response using regular expressions
+                            callback_text = response_data_callback.get('error', [{}])[0].get('text')
+                            callback_hash = re.search(r'hash ([a-fA-F0-9]+)', callback_text).group(1)
+
+                            # 6. Include the extracted hash in your request data for the second callback
+                            request_data_second_callback = {
+                                'vid': vid,
+                                'sid': sid,
+                                'hash': callback_hash,  # Use the extracted hash
+                            }
+
+                            # Define the maximum number of callback retries
+                            max_callback_retries = 3
+                            callback_retries = 0
+
+                            while callback_retries < max_callback_retries:
+                                # 7. Make a second POST request to the callback endpoint to get callback details
+                                response_second_callback = requests.post(
+                                    'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
+                                    json=request_data_second_callback
+                                )
+                                print(response_second_callback.text)
+
+                                if response_second_callback.status_code == 200:
+                                    response_data_second_callback = response_second_callback.json()
+                                    # Check if the status in the second callback response indicates completeness
+                                    if response_data_second_callback.get("status") == "aei7p7yrx4ae34":
+                                        # Status is complete, process the second callback response
+
+                                        # Store payment information in your database
+                                        payment = VideoPayments.objects.create(
+                                            ref_number=response_data_second_callback.get('txncd'),
+                                            payment_mode=response_data_second_callback.get('channel'),
+                                            msisdn=response_data_second_callback.get('msisdn_id'),
+                                            msisdn_idnum=response_data_second_callback.get('msisdn_idnum'),
+                                            amount=response_data_second_callback.get('mc'),
+                                            video=video,
+                                            user=request.user,
+                                        )
+
+                                        # Return a response indicating successful payment
+                                        return Response({"error": False, "message": "Payment completed successfully"})
+
+                                    elif response_data_second_callback.get("status") == "bdi6p2yy76etrs":
+                                        # Status is incomplete, increment retry count and wait before retrying
+                                        callback_retries += 1
+                                        sleep(3)  # Wait for 3 seconds before retrying
+
+                                    else:
+                                        # Handle unexpected status, you might want to log this
+                                        return Response({"error": True, "message": "Unexpected callback status"},
+                                                        status=status.HTTP_400_BAD_REQUEST)
+
+                                else:
+                                    # Handle the second callback request error
+                                    return Response({"error": True, "message": "Second Callback request failed"},
+                                                    status=status.HTTP_400_BAD_REQUEST)
+
+                            # If the loop completes without breaking, it means max_callback_retries was reached
+                            return Response({"error": True, "message": "Max retries reached"},
+                                            status=status.HTTP_400_BAD_REQUEST)
+
+                        else:
+                            # Handle first callback error
+                            return Response({"error": True, "message": "First Callback request failed"},
+                                            status=status.HTTP_400_BAD_REQUEST)
+                    else:
+                        return Response(
+                            {"error": True,
+                             "message": "STK PUSH request failed with status: " + str(header_status_stk)},
+                            status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    return Response({"error": True, "message": "STK PUSH request failed with status code: " + str(
+                        response_stk.status_code)},
+                                    status=status.HTTP_400_BAD_REQUEST)
 
 
 class HomeApiViewSet(viewsets.ViewSet):

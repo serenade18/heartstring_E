@@ -210,6 +210,19 @@ class VideoPayment(models.Model):
         return f'Payment {self.payment_id} for {self.video.title}'
 
 
+class VideoPayments(models.Model):
+    id = models.AutoField(primary_key=True)
+    ref_number = models.CharField(max_length=255)
+    payment_mode = models.CharField(max_length=255)
+    msisdn = models.CharField(max_length=255)
+    msisdn_idnum = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    video = models.ForeignKey(Video, on_delete=models.CASCADE)
+    user = models.ForeignKey(UserAccount, on_delete=models.CASCADE,default=None)
+    added_on = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
+
+
 class VideoAvailability(models.Model):
     id = models.AutoField(primary_key=True)
     video_id = models.ForeignKey(Video, on_delete=models.CASCADE)
