@@ -619,9 +619,9 @@ class MyPlayListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]  # Ensure the user is authenticated
 
     def get_queryset(self):
-        # Remove the filtering by user, so it lists all plays
-        return Play.objects.all()  # This returns all plays in the database
-
+        # Filter plays that have associated tickets with the 'purchased' status
+        # return Play.objects.filter(ticket__purchased=True, ticket__user=self.request.user)
+        return Play.objects.filter(ticket__payment__user=self.request.user)
 
 class PlayCastViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]

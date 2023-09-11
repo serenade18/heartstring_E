@@ -177,19 +177,6 @@ class PaymentSerializer(serializers.ModelSerializer):
         return response
 
 
-# class PaymentSerializer(serializers.ModelSerializer):
-#     user = UserCreateSerializer(read_only=True)
-#
-#     class Meta:
-#         model = Payment
-#         fields = '__all__'
-#
-#     def to_representation(self, instance):
-#         response = super().to_representation(instance)
-#         response["user"] = UserCreateSerializer(instance.user_id).data
-#         return response
-
-
 class VideoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Video
@@ -206,7 +193,6 @@ class MyStreamSerializer(serializers.ModelSerializer):
     class Meta:
         model = Video
         fields = '__all__'
-    #     
 
     # def to_representation(self, instance):
     #     response = super().to_representation(instance)
