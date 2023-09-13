@@ -31,6 +31,8 @@ from heartstringApp.serializers import TicketsSerializer, PaymentSerializer, Pla
 
 
 # Create your views here.
+# master password: lenu9WcCPuS5tmLpCA7q
+# master username: postgres
 
 
 class SuperUserRegistrationView(UserViewSet):
@@ -444,10 +446,15 @@ class PlayViewSet(viewsets.ViewSet):
     def create(self, request):
         # Check if the user is an admin
         if not request.user.is_staff:
-            return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
+            return Response({"error": True, "message": "User does not have enough permission to perform this task"},
                             status=status.HTTP_401_UNAUTHORIZED)
 
         try:
+            # Parse JSON data from strings to Python objects
+            play_cast_list = json.loads(request.data.get("play_cast_list", "[]"))
+            play_dateTime = json.loads(request.data.get("play_dateTime", "[]"))
+            other_offers = json.loads(request.data.get("other_offers", "[]"))
+
             serializer = PlaySerializer(data=request.data, context={"request": request})
             if serializer.is_valid():
                 play_instance = serializer.save()
@@ -456,19 +463,19 @@ class PlayViewSet(viewsets.ViewSet):
                 play_id = play_instance.id
 
                 # Access saved serializer and save play cast
-                play_cast_list = []
-                for i in range(len(request.data.getlist("play_casts.image"))):
+                play_cast_data_list = []
+                for data in play_cast_list:
                     play_cast_data = {
                         "play_id": play_id,
-                        "image": request.data.getlist("play_casts.image")[i],
-                        "real_name": request.data.getlist("play_casts.real_name")[i],
-                        "cast_name": request.data.getlist("play_casts.cast_name")[i],
+                        "image": data.get("image"),
+                        "real_name": data.get("real_name"),
+                        "cast_name": data.get("cast_name"),
                     }
-                    play_cast_list.append(play_cast_data)
-                print("Play Cast List:", play_cast_list)
+                    play_cast_data_list.append(play_cast_data)
+                print("Play Cast List:", play_cast_data_list)
 
                 # Save play cast data to table
-                serializer1 = PlayCastSerializer(data=play_cast_list, many=True, context={"request": request})
+                serializer1 = PlayCastSerializer(data=play_cast_data_list, many=True, context={"request": request})
                 if serializer1.is_valid():
                     serializer1.save()
                 else:
@@ -476,13 +483,13 @@ class PlayViewSet(viewsets.ViewSet):
 
                 # Access saved serializer and save play offers
                 play_offers_list = []
-                for i in range(len(request.data.getlist("play_offers.bogof"))):
+                for data in request.data.getlist("play_offers"):
                     play_offer_data = {
                         "play_id": play_id,
-                        "bogof": request.data.getlist("play_offers.bogof")[i],
-                        "offer_day": request.data.getlist("play_offers.offer_day")[i],
-                        "number_of_tickets": request.data.getlist("play_offers.number_of_tickets")[i],
-                        "promo_code": request.data.getlist("play_offers.promo_code")[i],
+                        "bogof": data.get("bogof"),
+                        "offer_day": data.get("offer_day"),
+                        "number_of_tickets": data.get("number_of_tickets"),
+                        "promo_code": data.get("promo_code"),
                     }
                     play_offers_list.append(play_offer_data)
                 print("Bogof Offers List:", play_offers_list)
@@ -496,14 +503,14 @@ class PlayViewSet(viewsets.ViewSet):
 
                 # Access saved serializer and save other offers
                 other_offers_list = []
-                for i in range(len(request.data.getlist("other_offers.offers_name"))):
+                for data in other_offers:
                     other_offer_data = {
                         "play_id": play_id,
-                        "offers_name": request.data.getlist("other_offers.offers_name")[i],
-                        "offer_day": request.data.getlist("other_offers.offer_day")[i],
-                        "promo_code": request.data.getlist("other_offers.promo_code")[i],
-                        "percentage": request.data.getlist("other_offers.percentage")[i],
-                        "number_of_tickets": request.data.getlist("other_offers.number_of_tickets")[i]
+                        "offers_name": data.get("offers_name"),
+                        "offer_day": data.get("offer_day"),
+                        "promo_code": data.get("promo_code"),
+                        "percentage": data.get("percentage"),
+                        "number_of_tickets": data.get("number_of_tickets"),
                     }
                     other_offers_list.append(other_offer_data)
                 print("Other Offers List:", other_offers_list)
@@ -517,23 +524,23 @@ class PlayViewSet(viewsets.ViewSet):
 
                 # Access saved serializer and save play date
                 play_date_list = []
-                for i in range(len(request.data.getlist("play_dates.play_date"))):
+                for data in play_dateTime:
                     play_date_data = {
                         "play_id": play_id,
-                        "play_date": request.data.getlist("play_dates.play_date")[i],
-                        "time1": request.data.getlist("play_dates.time1")[i],
-                        "time2": request.data.getlist("play_dates.time2")[i],
-                        "time3": request.data.getlist("play_dates.time3")[i]
+                        "play_date": data.get("date"),
+                        "time1": data.get("time1"),
+                        "time2": data.get("time2"),
+                        "time3": data.get("time3"),
                     }
                     play_date_list.append(play_date_data)
                 print("Play Dates List:", play_date_list)
 
-                # Save other offers to table
+                # Save play dates to table
                 serializer4 = PlayDateSerializer(data=play_date_list, many=True, context={"request": request})
                 if serializer4.is_valid():
                     serializer4.save()
                 else:
-                    print("Offer Serializer Validation Errors:", serializer3.errors)
+                    print("Play Date Serializer Validation Errors:", serializer4.errors)
 
                 dict_response = {"error": False, "message": "Play added successfully"}
             else:
@@ -543,6 +550,110 @@ class PlayViewSet(viewsets.ViewSet):
 
         return Response(dict_response,
                         status=status.HTTP_201_CREATED if not dict_response["error"] else status.HTTP_400_BAD_REQUEST)
+    
+    # def create(self, request):
+    #     # Check if the user is an admin
+    #     if not request.user.is_staff:
+    #         return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
+    #                         status=status.HTTP_401_UNAUTHORIZED)
+    #
+    #     try:
+    #         print(request.data)
+    #         serializer = PlaySerializer(data=request.data, context={"request": request})
+    #         if serializer.is_valid():
+    #             play_instance = serializer.save()
+    #
+    #             # Access Play id
+    #             play_id = play_instance.id
+    #
+    #             # Access saved serializer and save play cast
+    #             play_cast_list = []
+    #             for i in range(len(request.data.getlist("play_casts.image"))):
+    #                 play_cast_data = {
+    #                     "play_id": play_id,
+    #                     "image": request.data.getlist("play_casts.image")[i],
+    #                     "real_name": request.data.getlist("play_casts.real_name")[i],
+    #                     "cast_name": request.data.getlist("play_casts.cast_name")[i],
+    #                 }
+    #                 play_cast_list.append(play_cast_data)
+    #             print("Play Cast List:", play_cast_list)
+    #
+    #             # Save play cast data to table
+    #             serializer1 = PlayCastSerializer(data=play_cast_list, many=True, context={"request": request})
+    #             if serializer1.is_valid():
+    #                 serializer1.save()
+    #             else:
+    #                 print("Play Cast Serializer Validation Errors:", serializer1.errors)
+    #
+    #             # Access saved serializer and save play offers
+    #             play_offers_list = []
+    #             for i in range(len(request.data.getlist("play_offers.bogof"))):
+    #                 play_offer_data = {
+    #                     "play_id": play_id,
+    #                     "bogof": request.data.getlist("play_offers.bogof")[i],
+    #                     "offer_day": request.data.getlist("play_offers.offer_day")[i],
+    #                     "number_of_tickets": request.data.getlist("play_offers.number_of_tickets")[i],
+    #                     "promo_code": request.data.getlist("play_offers.promo_code")[i],
+    #                 }
+    #                 play_offers_list.append(play_offer_data)
+    #             print("Bogof Offers List:", play_offers_list)
+    #
+    #             # Save play offer data to table
+    #             serializer2 = OfferSerializer(data=play_offers_list, many=True, context={"request": request})
+    #             if serializer2.is_valid():
+    #                 serializer2.save()
+    #             else:
+    #                 print("Offer Serializer Validation Errors:", serializer2.errors)
+    #
+    #             # Access saved serializer and save other offers
+    #             other_offers_list = []
+    #             for i in range(len(request.data.getlist("other_offers.offers_name"))):
+    #                 other_offer_data = {
+    #                     "play_id": play_id,
+    #                     "offers_name": request.data.getlist("other_offers.offers_name")[i],
+    #                     "offer_day": request.data.getlist("other_offers.offer_day")[i],
+    #                     "promo_code": request.data.getlist("other_offers.promo_code")[i],
+    #                     "percentage": request.data.getlist("other_offers.percentage")[i],
+    #                     "number_of_tickets": request.data.getlist("other_offers.number_of_tickets")[i]
+    #                 }
+    #                 other_offers_list.append(other_offer_data)
+    #             print("Other Offers List:", other_offers_list)
+    #
+    #             # Save other offers to table
+    #             serializer3 = OtherOfferSerializer(data=other_offers_list, many=True, context={"request": request})
+    #             if serializer3.is_valid():
+    #                 serializer3.save()
+    #             else:
+    #                 print("Offer Serializer Validation Errors:", serializer3.errors)
+    #
+    #             # Access saved serializer and save play date
+    #             play_date_list = []
+    #             for i in range(len(request.data.getlist("play_dates.play_date"))):
+    #                 play_date_data = {
+    #                     "play_id": play_id,
+    #                     "play_date": request.data.getlist("play_dates.play_date")[i],
+    #                     "time1": request.data.getlist("play_dates.time1")[i],
+    #                     "time2": request.data.getlist("play_dates.time2")[i],
+    #                     "time3": request.data.getlist("play_dates.time3")[i]
+    #                 }
+    #                 play_date_list.append(play_date_data)
+    #             print("Play Dates List:", play_date_list)
+    #
+    #             # Save other offers to table
+    #             serializer4 = PlayDateSerializer(data=play_date_list, many=True, context={"request": request})
+    #             if serializer4.is_valid():
+    #                 serializer4.save()
+    #             else:
+    #                 print("Offer Serializer Validation Errors:", serializer3.errors)
+    #
+    #             dict_response = {"error": False, "message": "Play added successfully"}
+    #         else:
+    #             dict_response = {"error": True, "message": "Validation Error", "errors": serializer.errors}
+    #     except Exception as e:
+    #         dict_response = {"error": True, "message": "Error Adding Play to Database"}
+    #
+    #     return Response(dict_response,
+    #                     status=status.HTTP_201_CREATED if not dict_response["error"] else status.HTTP_400_BAD_REQUEST)
 
     def update(self, request, pk=None):
         # Check if the user is an admin
@@ -757,7 +868,7 @@ class VideoViewSet(viewsets.ViewSet):
     def create(self, request):
         # Check if the user is an admin
         if not request.user.is_staff:
-            return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
+            return Response({"error": True, "message": "User does not have enough permission to perform this task"}, \
                             status=status.HTTP_401_UNAUTHORIZED)
         try:
             print(request.data)
@@ -768,16 +879,31 @@ class VideoViewSet(viewsets.ViewSet):
                 # Access Video id
                 video_id = video_instance.id
 
-                # Access saved serializer and save video cast
+                # Process video_casts data (with or without indexes)
                 video_cast_list = []
-                for i in range(len(request.data.getlist("video_casts.real_name"))):
-                    video_cast_data = {
-                        "video_id": video_id,
-                        "image": request.data.getlist("video_casts.image")[i],
-                        "real_name": request.data.getlist("video_casts.real_name")[i],
-                        "cast_name": request.data.getlist("video_casts.cast_name")[i],
-                    }
-                    video_cast_list.append(video_cast_data)
+                video_cast_data_list = request.data.get("video_casts", [])
+                if not video_cast_data_list:
+                    # Handle the indexed format
+                    index = 0
+                    while f"video_casts[{index}][real_name]" in request.data:
+                        video_cast_data = {
+                            "video_id": video_id,
+                            "image": request.data.get(f"video_casts[{index}][image]"),
+                            "real_name": request.data.get(f"video_casts[{index}][real_name]"),
+                            "cast_name": request.data.get(f"video_casts[{index}][cast_name]"),
+                        }
+                        video_cast_list.append(video_cast_data)
+                        index += 1
+                else:
+                    # Handle the non-indexed format
+                    for data in video_cast_data_list:
+                        video_cast_data = {
+                            "video_id": video_id,
+                            "image": data.get("image"),
+                            "real_name": data.get("real_name"),
+                            "cast_name": data.get("cast_name"),
+                        }
+                        video_cast_list.append(video_cast_data)
                 print("Video Cast List:", video_cast_list)
 
                 # Save video cast data to table
@@ -787,27 +913,46 @@ class VideoViewSet(viewsets.ViewSet):
                 else:
                     print("Video Cast Serializer Validation Errors:", serializer1.errors)
 
-                # Access saved serializer and save video availability
+                # Process video_available data (with or without indexes)
                 video_available_list = []
-                for i in range(len(request.data.getlist("video_available.three_days"))):
-                    video_available_data = {
-                        "video_id": video_id,
-                        "three_days": request.data.getlist("video_available.three_days")[i],
-                        "three_price": request.data.getlist("video_available.three_price")[i],
-                        "seven_days": request.data.getlist("video_available.seven_days")[i],
-                        "seven_price": request.data.getlist("video_available.seven_price")[i],
-                        "fourteen_days": request.data.getlist("video_available.fourteen_days")[i],
-                        "fourteen_price": request.data.getlist("video_available.fourteen_price")[i]
-                    }
-                    video_available_list.append(video_available_data)
+                video_available_data_list = request.data.get("video_available", [])
+                if not video_available_data_list:
+                    # Handle the indexed format
+                    index = 0
+                    while f"video_available[{index}][three_days]" in request.data:
+                        video_available_data = {
+                            "video_id": video_id,
+                            "three_days": request.data.get(f"video_available[{index}][three_days]"),
+                            "three_price": request.data.get(f"video_available[{index}][three_price]"),
+                            "seven_days": request.data.get(f"video_available[{index}][seven_days]"),
+                            "seven_price": request.data.get(f"video_available[{index}][seven_price]"),
+                            "fourteen_days": request.data.get(f"video_available[{index}][fourteen_days]"),
+                            "fourteen_price": request.data.get(f"video_available[{index}][fourteen_price]"),
+                        }
+                        video_available_list.append(video_available_data)
+                        index += 1
+                else:
+                    # Handle the non-indexed format
+                    for data in video_available_data_list:
+                        video_available_data = {
+                            "video_id": video_id,
+                            "three_days": data.get("three_days"),
+                            "three_price": data.get("three_price"),
+                            "seven_days": data.get("seven_days"),
+                            "seven_price": data.get("seven_price"),
+                            "fourteen_days": data.get("fourteen_days"),
+                            "fourteen_price": data.get("fourteen_price"),
+                        }
+                        video_available_list.append(video_available_data)
                 print("Video available List:", video_available_list)
 
-                # Save play cast data to table
-                serializer2 = VideoAvailabilitySerializer(data=video_available_list, many=True, context={"request": request})
+                # Save video availability data to table
+                serializer2 = VideoAvailabilitySerializer(data=video_available_list, many=True,
+                                                          context={"request": request})
                 if serializer2.is_valid():
                     serializer2.save()
                 else:
-                    print("Video Availabilty Serializer Validation Errors:", serializer2.errors)
+                    print("Video Availability Serializer Validation Errors:", serializer2.errors)
 
                 dict_response = {"error": False, "message": "Video Created Successfully"}
             else:
@@ -816,8 +961,10 @@ class VideoViewSet(viewsets.ViewSet):
             print("Error during video creation:", e)
             dict_response = {"error": True, "message": "Error During Creating Video"}
 
-        return Response(dict_response,
-                        status=status.HTTP_201_CREATED if not dict_response["error"] else status.HTTP_400_BAD_REQUEST)
+        return Response(
+            dict_response,
+            status=status.HTTP_201_CREATED if not dict_response["error"] else status.HTTP_400_BAD_REQUEST
+        )
 
     def update(self, request, pk=None):
         # Check if the user is an admin
@@ -880,6 +1027,72 @@ class VideoViewSet(viewsets.ViewSet):
         # except VideoPayment.DoesNotExist:
         #     return Response({"error": True, "message": "You haven't made the payment for this video"},
         #                     status=status.HTTP_403_FORBIDDEN)
+
+
+class VideoCastViewSet(viewsets.ViewSet):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        # play_cast = PlayCast.objects.filter(user=request.user)
+        video_cast = VideoCast.objects.all()
+        serializer = VideoCastSerializer(video_cast, many=True, context={"request": request})
+
+        response_dict = {"error": False, "message": "All Play Cast List Data", "data": serializer.data}
+
+        return Response(response_dict)
+
+    def create(self, request):
+        # Check if the user is an admin
+        if not request.user.is_staff:
+            return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
+                            status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            serializer = VideoCastSerializer(data=request.data, context={"request": request})
+            if serializer.is_valid():
+                serializer.save()
+                dict_response = {"error": False, "message": "Cast Created Successfully"}
+            else:
+                dict_response = {"error": True, "message": "Validation Error", "errors": serializer.errors}
+        except Exception as e:
+            print("Error during video creation:", e)
+            dict_response = {"error": True, "message": "Error During Creating Video"}
+
+        return Response(dict_response,
+                        status=status.HTTP_201_CREATED if not dict_response["error"] else status.HTTP_400_BAD_REQUEST)
+
+    def retrieve(self, request, pk=None):
+        queryset = VideoCast.objects.all()
+        video_cast = get_object_or_404(queryset, pk=pk)
+        serializer = VideoCastSerializer(video_cast, context={"request": request})
+        return Response({"error": False, "message": "Single Data Fetch", "data": serializer.data})
+
+    def update(self, request, pk=None):
+        # Check if the user is an admin
+        if not request.user.is_staff:
+            return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
+                            status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            queryset = VideoCast.objects.all()
+            video_cast = get_object_or_404(queryset, pk=pk)
+            serializer = VideoCastSerializer(video_cast, data=request.data, context={"request": request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            dict_response = {"error": False, "message": "Payment Re-Processed Successfully"}
+        except:
+            dict_response = {"error": True, "message": "An Error Occurred"}
+
+        return Response(dict_response)
+
+    def destroy(self, request, pk=None):
+        if not request.user.is_staff:
+            return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
+                            status=status.HTTP_401_UNAUTHORIZED)
+
+        queryset = PlayCast.objects.all()
+        play_cast = get_object_or_404(queryset, pk=pk)
+        play_cast.delete()
+        return Response({"error": False, "message": "Payment Removed"})
 
 
 class MyStreamListView(generics.ListAPIView):

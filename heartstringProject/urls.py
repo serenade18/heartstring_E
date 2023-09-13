@@ -20,6 +20,7 @@ router.register("video-payments", views.VideoPaymentViewSet, basename="video-pay
 router.register("plays", views.PlayViewSet, basename="plays")
 router.register("videos", views.VideoViewSet, basename="videos")
 router.register("play_casts", views.PlayCastViewSet, basename="play_casts")
+router.register("video_casts", views.VideoCastViewSet, basename="video_casts")
 router.register("offers", views.OffersVIewSet, basename="offers")
 router.register("home_api", views.HomeApiViewSet, basename="home_api")
 
