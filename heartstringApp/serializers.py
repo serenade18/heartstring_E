@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from heartstringApp.models import UserAccount, Play, PlayCast, Bogof, Ticket, Payment, Video, VideoCast, VideoPayment, \
-    VideoAvailability, OtherOffers, PlayTime
+    VideoAvailability, OtherOffers, PlayTime, VideoPayments
 
 User = get_user_model()
 
@@ -227,11 +227,11 @@ class VideoPaymentSerializer(serializers.ModelSerializer):
     user = UserCreateSerializer(read_only=True)
 
     class Meta:
-        model = VideoPayment
+        model = VideoPayments
         fields = '__all__'
 
     def to_representation(self, instance):
         response = super().to_representation(instance)
-        response["user"] = UserCreateSerializer(instance.user_id).data
-        response["video"] = VideoSerializer(instance.video_id).data
+        response["user"] = instance.user_id
+        response["video"] = instance.video_id
         return response

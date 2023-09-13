@@ -3,19 +3,19 @@ import hmac
 import json
 import uuid
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from time import sleep
+import time
 
 import qrcode
 import requests
-# from django.contrib.sites import requests
 from django.core.files.base import ContentFile, File
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from djoser.views import UserViewSet
-from rest_framework import viewsets, status, generics
+from rest_framework import viewsets, status, generics, permissions
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny, IsAdminUser
 from rest_framework.response import Response
@@ -324,7 +324,7 @@ class PaymentViewSet(viewsets.ViewSet):
                             }
 
                             # Define the maximum number of callback retries
-                            max_callback_retries = 3
+                            max_callback_retries = 5
                             callback_retries = 0
 
                             while callback_retries < max_callback_retries:
@@ -471,7 +471,6 @@ class PlayViewSet(viewsets.ViewSet):
                         "cast_name": data.get("cast_name"),
                     }
                     play_cast_data_list.append(play_cast_data)
-                print("Play Cast List:", play_cast_data_list)
 
                 # Save play cast data to table
                 serializer1 = PlayCastSerializer(data=play_cast_data_list, many=True, context={"request": request})
@@ -492,7 +491,7 @@ class PlayViewSet(viewsets.ViewSet):
                         "promo_code": data.get("promo_code"),
                     }
                     play_offers_list.append(play_offer_data)
-                print("Bogof Offers List:", play_offers_list)
+
                 # Save play offer data to table
                 serializer2 = OfferSerializer(data=play_offers_list, many=True, context={"request": request})
                 if serializer2.is_valid():
@@ -512,7 +511,7 @@ class PlayViewSet(viewsets.ViewSet):
                         "number_of_tickets": data.get("number_of_tickets"),
                     }
                     other_offers_list.append(other_offer_data)
-                print("Other Offers List:", other_offers_list)
+
                 # Save other offers to table
                 serializer3 = OtherOfferSerializer(data=other_offers_list, many=True, context={"request": request})
                 if serializer3.is_valid():
@@ -531,7 +530,6 @@ class PlayViewSet(viewsets.ViewSet):
                         "time3": data.get("time3"),
                     }
                     play_date_list.append(play_date_data)
-                print("Play Dates List:", play_date_list)
 
                 # Save play dates to table
                 serializer4 = PlayDateSerializer(data=play_date_list, many=True, context={"request": request})
@@ -894,34 +892,64 @@ class VideoViewSet(viewsets.ViewSet):
         return Response(dict_response)
 
     def retrieve(self, request, pk=None):
+        # Ensure that the user is authenticated
+        if not request.user.is_authenticated:
+            return Response(
+                {"error": True, "message": "Login to access play"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
         queryset = Video.objects.all()
         video = get_object_or_404(queryset, pk=pk)
         serializer = VideoSerializer(video, context={"request": request})
 
         serializer_data = serializer.data
-        # Access play_casts associated with the current play
+
+        # Access video_casts associated with the current video
         video_casts = VideoCast.objects.filter(video_id=serializer_data["id"])
         video_casts_serializer = VideoCastSerializer(video_casts, many=True)
         serializer_data["video_casts"] = video_casts_serializer.data
 
-        # Access play_casts associated with the current play
+        # Access video_available associated with the current video
         video_available = VideoAvailability.objects.filter(video_id=serializer_data["id"])
         video_available_serializer = VideoAvailabilitySerializer(video_available, many=True)
         serializer_data["video_available"] = video_available_serializer.data
 
+        # Check if the user has made a payment for this video
+        try:
+            # Make sure the user is authenticated before querying the VideoPayment
+            video_payment = VideoPayment.objects.get(user=request.user, video=video)
+            current_datetime = datetime.now()
+            expiration_date = video_payment.added_on + timedelta(days=int(video_payment.amount))
+
+            if current_datetime <= expiration_date:
+                remaining_access_time = (expiration_date - current_datetime).days
+                serializer_data["remaining_access_time"] = remaining_access_time
+            else:
+                serializer_data["remaining_access_time"] = 0  # Access has expired
+
+        except VideoPayment.DoesNotExist:
+            serializer_data["remaining_access_time"] = 0  # No payment made
+
         return Response({"error": False, "message": "Single Data Fetch", "data": serializer_data})
-        # Check if the user has made the payment for the video
-        # try:
-        #     video_payment = VideoPayment.objects.get(user=request.user, video=video)
-        #     current_datetime = datetime.now()
-        #     if video_payment.expiration_date >= current_datetime:
-        #         return Response({"error": False, "message": "You can watch the video now"})
-        #     else:
-        #         return Response({"error": True, "message": "Your access to the video has expired"},
-        #                         status=status.HTTP_403_FORBIDDEN)
-        # except VideoPayment.DoesNotExist:
-        #     return Response({"error": True, "message": "You haven't made the payment for this video"},
-        #                     status=status.HTTP_403_FORBIDDEN)
+
+    # def retrieve(self, request, pk=None):
+    #     queryset = Video.objects.all()
+    #     video = get_object_or_404(queryset, pk=pk)
+    #     serializer = VideoSerializer(video, context={"request": request})
+    #
+    #     serializer_data = serializer.data
+    #     # Access play_casts associated with the current play
+    #     video_casts = VideoCast.objects.filter(video_id=serializer_data["id"])
+    #     video_casts_serializer = VideoCastSerializer(video_casts, many=True)
+    #     serializer_data["video_casts"] = video_casts_serializer.data
+    #
+    #     # Access play_casts associated with the current play
+    #     video_available = VideoAvailability.objects.filter(video_id=serializer_data["id"])
+    #     video_available_serializer = VideoAvailabilitySerializer(video_available, many=True)
+    #     serializer_data["video_available"] = video_available_serializer.data
+    #
+    #     return Response({"error": False, "message": "Single Data Fetch", "data": serializer_data})
 
 
 class VideoCastViewSet(viewsets.ViewSet):
@@ -1004,7 +1032,7 @@ class VideoPaymentViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        videopayment = VideoPayment.objects.all()
+        videopayment = VideoPayments.objects.all()
         serializer = VideoPaymentSerializer(videopayment, many=True, context={"request": request})
         response_dict = {"error": False, "message": "All Payments List Data", "data": serializer.data}
         return Response(response_dict)
@@ -1027,7 +1055,7 @@ class VideoPaymentViewSet(viewsets.ViewSet):
         # OEgn$6shMB9( :merchant password
         # Define your transaction parameters here
         live = "1"
-        oid = str(video.id)  # Use the retrieved Video object to get the ID
+        oid = f"{int(time.time())}-{uuid.uuid4()}"  # Use the retrieved Video object to get the ID
         inv = str(video.id)  # Use the retrieved Video object to get the ticket number
         tel = user_phone
         eml = user_email
@@ -1079,7 +1107,7 @@ class VideoPaymentViewSet(viewsets.ViewSet):
 
         # Make a POST request to your payment gateway
         response = requests.post('https://apis.ipayafrica.com/payments/v2/transact', data=request_data)
-        print(response.text)
+        # print(response.text)
         print(request_data)
 
         # Try to extract the SID from the response
@@ -1155,7 +1183,7 @@ class VideoPaymentViewSet(viewsets.ViewSet):
                             }
 
                             # Define the maximum number of callback retries
-                            max_callback_retries = 3
+                            max_callback_retries = 7
                             callback_retries = 0
 
                             while callback_retries < max_callback_retries:
@@ -1189,7 +1217,7 @@ class VideoPaymentViewSet(viewsets.ViewSet):
                                     elif response_data_second_callback.get("status") == "bdi6p2yy76etrs":
                                         # Status is incomplete, increment retry count and wait before retrying
                                         callback_retries += 1
-                                        sleep(3)  # Wait for 3 seconds before retrying
+                                        sleep(5)  # Wait for 3 seconds before retrying
 
                                     else:
                                         # Handle unexpected status, you might want to log this
