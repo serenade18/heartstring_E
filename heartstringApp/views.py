@@ -458,7 +458,6 @@ class PlayViewSet(viewsets.ViewSet):
             serializer = PlaySerializer(data=request.data, context={"request": request})
             if serializer.is_valid():
                 play_instance = serializer.save()
-
                 # Access Play id
                 play_id = play_instance.id
 
@@ -483,7 +482,8 @@ class PlayViewSet(viewsets.ViewSet):
 
                 # Access saved serializer and save play offers
                 play_offers_list = []
-                for data in request.data.getlist("play_offers"):
+                # for data in request.data.getlist("play_offers"):
+                for data in json.loads(request.data.get("play_offers", "[]")):
                     play_offer_data = {
                         "play_id": play_id,
                         "bogof": data.get("bogof"),
@@ -493,7 +493,6 @@ class PlayViewSet(viewsets.ViewSet):
                     }
                     play_offers_list.append(play_offer_data)
                 print("Bogof Offers List:", play_offers_list)
-
                 # Save play offer data to table
                 serializer2 = OfferSerializer(data=play_offers_list, many=True, context={"request": request})
                 if serializer2.is_valid():
@@ -514,7 +513,6 @@ class PlayViewSet(viewsets.ViewSet):
                     }
                     other_offers_list.append(other_offer_data)
                 print("Other Offers List:", other_offers_list)
-
                 # Save other offers to table
                 serializer3 = OtherOfferSerializer(data=other_offers_list, many=True, context={"request": request})
                 if serializer3.is_valid():
@@ -546,114 +544,11 @@ class PlayViewSet(viewsets.ViewSet):
             else:
                 dict_response = {"error": True, "message": "Validation Error", "errors": serializer.errors}
         except Exception as e:
+            print("Error:", str(e))
             dict_response = {"error": True, "message": "Error Adding Play to Database"}
 
         return Response(dict_response,
                         status=status.HTTP_201_CREATED if not dict_response["error"] else status.HTTP_400_BAD_REQUEST)
-    
-    # def create(self, request):
-    #     # Check if the user is an admin
-    #     if not request.user.is_staff:
-    #         return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
-    #                         status=status.HTTP_401_UNAUTHORIZED)
-    #
-    #     try:
-    #         print(request.data)
-    #         serializer = PlaySerializer(data=request.data, context={"request": request})
-    #         if serializer.is_valid():
-    #             play_instance = serializer.save()
-    #
-    #             # Access Play id
-    #             play_id = play_instance.id
-    #
-    #             # Access saved serializer and save play cast
-    #             play_cast_list = []
-    #             for i in range(len(request.data.getlist("play_casts.image"))):
-    #                 play_cast_data = {
-    #                     "play_id": play_id,
-    #                     "image": request.data.getlist("play_casts.image")[i],
-    #                     "real_name": request.data.getlist("play_casts.real_name")[i],
-    #                     "cast_name": request.data.getlist("play_casts.cast_name")[i],
-    #                 }
-    #                 play_cast_list.append(play_cast_data)
-    #             print("Play Cast List:", play_cast_list)
-    #
-    #             # Save play cast data to table
-    #             serializer1 = PlayCastSerializer(data=play_cast_list, many=True, context={"request": request})
-    #             if serializer1.is_valid():
-    #                 serializer1.save()
-    #             else:
-    #                 print("Play Cast Serializer Validation Errors:", serializer1.errors)
-    #
-    #             # Access saved serializer and save play offers
-    #             play_offers_list = []
-    #             for i in range(len(request.data.getlist("play_offers.bogof"))):
-    #                 play_offer_data = {
-    #                     "play_id": play_id,
-    #                     "bogof": request.data.getlist("play_offers.bogof")[i],
-    #                     "offer_day": request.data.getlist("play_offers.offer_day")[i],
-    #                     "number_of_tickets": request.data.getlist("play_offers.number_of_tickets")[i],
-    #                     "promo_code": request.data.getlist("play_offers.promo_code")[i],
-    #                 }
-    #                 play_offers_list.append(play_offer_data)
-    #             print("Bogof Offers List:", play_offers_list)
-    #
-    #             # Save play offer data to table
-    #             serializer2 = OfferSerializer(data=play_offers_list, many=True, context={"request": request})
-    #             if serializer2.is_valid():
-    #                 serializer2.save()
-    #             else:
-    #                 print("Offer Serializer Validation Errors:", serializer2.errors)
-    #
-    #             # Access saved serializer and save other offers
-    #             other_offers_list = []
-    #             for i in range(len(request.data.getlist("other_offers.offers_name"))):
-    #                 other_offer_data = {
-    #                     "play_id": play_id,
-    #                     "offers_name": request.data.getlist("other_offers.offers_name")[i],
-    #                     "offer_day": request.data.getlist("other_offers.offer_day")[i],
-    #                     "promo_code": request.data.getlist("other_offers.promo_code")[i],
-    #                     "percentage": request.data.getlist("other_offers.percentage")[i],
-    #                     "number_of_tickets": request.data.getlist("other_offers.number_of_tickets")[i]
-    #                 }
-    #                 other_offers_list.append(other_offer_data)
-    #             print("Other Offers List:", other_offers_list)
-    #
-    #             # Save other offers to table
-    #             serializer3 = OtherOfferSerializer(data=other_offers_list, many=True, context={"request": request})
-    #             if serializer3.is_valid():
-    #                 serializer3.save()
-    #             else:
-    #                 print("Offer Serializer Validation Errors:", serializer3.errors)
-    #
-    #             # Access saved serializer and save play date
-    #             play_date_list = []
-    #             for i in range(len(request.data.getlist("play_dates.play_date"))):
-    #                 play_date_data = {
-    #                     "play_id": play_id,
-    #                     "play_date": request.data.getlist("play_dates.play_date")[i],
-    #                     "time1": request.data.getlist("play_dates.time1")[i],
-    #                     "time2": request.data.getlist("play_dates.time2")[i],
-    #                     "time3": request.data.getlist("play_dates.time3")[i]
-    #                 }
-    #                 play_date_list.append(play_date_data)
-    #             print("Play Dates List:", play_date_list)
-    #
-    #             # Save other offers to table
-    #             serializer4 = PlayDateSerializer(data=play_date_list, many=True, context={"request": request})
-    #             if serializer4.is_valid():
-    #                 serializer4.save()
-    #             else:
-    #                 print("Offer Serializer Validation Errors:", serializer3.errors)
-    #
-    #             dict_response = {"error": False, "message": "Play added successfully"}
-    #         else:
-    #             dict_response = {"error": True, "message": "Validation Error", "errors": serializer.errors}
-    #     except Exception as e:
-    #         dict_response = {"error": True, "message": "Error Adding Play to Database"}
-    #
-    #     return Response(dict_response,
-    #                     status=status.HTTP_201_CREATED if not dict_response["error"] else status.HTTP_400_BAD_REQUEST)
 
     def update(self, request, pk=None):
         # Check if the user is an admin
