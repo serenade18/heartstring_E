@@ -11,6 +11,7 @@ import time
 import qrcode
 import requests
 from django.core.files.base import ContentFile, File
+from django.utils import timezone
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
@@ -878,8 +879,9 @@ class VideoViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         # Check if the user is an admin
-        if not request.user.is_admin:
-            return Response({"error": True, "message": "Unauthorized access"}, status=status.HTTP_401_UNAUTHORIZED)
+        if not request.user.is_staff:
+            return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
+                            status=status.HTTP_401_UNAUTHORIZED)
 
         try:
             queryset = Video.objects.all()
@@ -891,65 +893,92 @@ class VideoViewSet(viewsets.ViewSet):
 
         return Response(dict_response)
 
-    def retrieve(self, request, pk=None):
-        # Ensure that the user is authenticated
-        if not request.user.is_authenticated:
-            return Response(
-                {"error": True, "message": "Login to access play"},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+    # def retrieve(self, request, pk=None):
+    #     # Ensure that the user is authenticated
+    #     if not request.user.is_authenticated:
+    #         return Response(
+    #             {"error": True, "message": "Authentication required"},
+    #             status=status.HTTP_401_UNAUTHORIZED
+    #         )
+    #
+    #     queryset = Video.objects.all()
+    #     video = get_object_or_404(queryset, pk=pk)
+    #
+    #     # Check if the user has made a payment for this video
+    #     try:
+    #         # Make sure the user is authenticated before querying the VideoPayment
+    #         video_payment = VideoPayment.objects.get(user=request.user, video=video)
+    #         current_datetime = timezone.now()
+    #         expiration_date = video_payment.added_on + timedelta(days=int(video_payment.amount))
+    #
+    #         if current_datetime <= expiration_date:
+    #             # Calculate remaining access time based on pricing tiers
+    #             pricing_tiers = video.video_available.first()  # Assuming the pricing tiers are the same for all durations
+    #             remaining_access_time = None
+    #
+    #             if video_payment.amount == pricing_tiers.three_price:
+    #                 remaining_access_time = 3  # Access for 3 days
+    #             elif video_payment.amount == pricing_tiers.seven_price:
+    #                 remaining_access_time = 7  # Access for 7 days
+    #             elif video_payment.amount == pricing_tiers.fourteen_price:
+    #                 remaining_access_time = 14  # Access for 14 days
+    #
+    #             if remaining_access_time is not None and remaining_access_time == 0:
+    #                 # Access has expired, return an error response
+    #                 return Response(
+    #                     {"error": True, "message": "Access to this video has expired"},
+    #                     status=status.HTTP_403_FORBIDDEN
+    #                 )
+    #
+    #             serializer = VideoSerializer(video, context={"request": request})
+    #
+    #             serializer_data = serializer.data
+    #
+    #             # Access video_casts associated with the current video
+    #             video_casts = VideoCast.objects.filter(video_id=serializer_data["id"])
+    #             video_casts_serializer = VideoCastSerializer(video_casts, many=True)
+    #             serializer_data["video_casts"] = video_casts_serializer.data
+    #
+    #             # Access video_available associated with the current video
+    #             video_available = VideoAvailability.objects.filter(video_id=serializer_data["id"])
+    #             video_available_serializer = VideoAvailabilitySerializer(video_available, many=True)
+    #             serializer_data["video_available"] = video_available_serializer.data
+    #
+    #             serializer_data["remaining_access_time"] = remaining_access_time
+    #
+    #             return Response({"error": False, "message": "Single Data Fetch", "data": serializer_data})
+    #
+    #         else:
+    #             # Access has expired, return an error response
+    #             return Response(
+    #                 {"error": True, "message": "Access to this video has expired"},
+    #                 status=status.HTTP_403_FORBIDDEN
+    #             )
+    #
+    #     except VideoPayment.DoesNotExist:
+    #         # No payment made, return an error response
+    #         return Response(
+    #             {"error": True, "message": "No payment made for this video"},
+    #             status=status.HTTP_403_FORBIDDEN
+    #         )
 
+    def retrieve(self, request, pk=None):
         queryset = Video.objects.all()
         video = get_object_or_404(queryset, pk=pk)
         serializer = VideoSerializer(video, context={"request": request})
 
         serializer_data = serializer.data
-
-        # Access video_casts associated with the current video
+        # Access play_casts associated with the current play
         video_casts = VideoCast.objects.filter(video_id=serializer_data["id"])
         video_casts_serializer = VideoCastSerializer(video_casts, many=True)
         serializer_data["video_casts"] = video_casts_serializer.data
 
-        # Access video_available associated with the current video
+        # Access play_casts associated with the current play
         video_available = VideoAvailability.objects.filter(video_id=serializer_data["id"])
         video_available_serializer = VideoAvailabilitySerializer(video_available, many=True)
         serializer_data["video_available"] = video_available_serializer.data
 
-        # Check if the user has made a payment for this video
-        try:
-            # Make sure the user is authenticated before querying the VideoPayment
-            video_payment = VideoPayment.objects.get(user=request.user, video=video)
-            current_datetime = datetime.now()
-            expiration_date = video_payment.added_on + timedelta(days=int(video_payment.amount))
-
-            if current_datetime <= expiration_date:
-                remaining_access_time = (expiration_date - current_datetime).days
-                serializer_data["remaining_access_time"] = remaining_access_time
-            else:
-                serializer_data["remaining_access_time"] = 0  # Access has expired
-
-        except VideoPayment.DoesNotExist:
-            serializer_data["remaining_access_time"] = 0  # No payment made
-
         return Response({"error": False, "message": "Single Data Fetch", "data": serializer_data})
-
-    # def retrieve(self, request, pk=None):
-    #     queryset = Video.objects.all()
-    #     video = get_object_or_404(queryset, pk=pk)
-    #     serializer = VideoSerializer(video, context={"request": request})
-    #
-    #     serializer_data = serializer.data
-    #     # Access play_casts associated with the current play
-    #     video_casts = VideoCast.objects.filter(video_id=serializer_data["id"])
-    #     video_casts_serializer = VideoCastSerializer(video_casts, many=True)
-    #     serializer_data["video_casts"] = video_casts_serializer.data
-    #
-    #     # Access play_casts associated with the current play
-    #     video_available = VideoAvailability.objects.filter(video_id=serializer_data["id"])
-    #     video_available_serializer = VideoAvailabilitySerializer(video_available, many=True)
-    #     serializer_data["video_available"] = video_available_serializer.data
-    #
-    #     return Response({"error": False, "message": "Single Data Fetch", "data": serializer_data})
 
 
 class VideoCastViewSet(viewsets.ViewSet):
