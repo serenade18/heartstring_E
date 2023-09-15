@@ -1095,7 +1095,7 @@ class VideoPaymentViewSet(viewsets.ViewSet):
         p3 = ""
         p4 = ""
         cst = "0"
-        crl = "1"
+        crl = "0"
         autopay = "1"
         cbk = "http://heartstringsentertainment.co.ke"  # Replace with your callback URL
 
