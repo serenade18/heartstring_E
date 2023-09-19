@@ -22,6 +22,7 @@ router.register("videos", views.VideoViewSet, basename="videos")
 router.register("play_casts", views.PlayCastViewSet, basename="play_casts")
 router.register("video_casts", views.VideoCastViewSet, basename="video_casts")
 router.register("offers", views.OffersVIewSet, basename="offers")
+router.register("my-stream", views.MyStreamListView, basename="my-stream")
 router.register("home_api", views.HomeApiViewSet, basename="home_api")
 
 urlpatterns = [
@@ -36,7 +37,6 @@ urlpatterns = [
     path('api/update-user/', UserAccountUpdateView.as_view(), name='update-user'),
     path('api/delete-user/<int:pk>/', UserAccountDeleteView.as_view(), name='user-delete'),
     path('api/my-plays/', MyPlayListView.as_view(), name='my-plays'),
-    path('api/my-stream/', MyStreamListView.as_view(), name='my-stream'),
     path('api/', include(router.urls)),
     path('api/gettoken/', TokenObtainPairView.as_view(), name="gettoken"),
     path('api/refresh_token/', TokenRefreshView.as_view(), name="refresh_token"),

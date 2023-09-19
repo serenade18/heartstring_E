@@ -325,7 +325,7 @@ class PaymentViewSet(viewsets.ViewSet):
                             }
 
                             # Define the maximum number of callback retries
-                            max_callback_retries = 5
+                            max_callback_retries = 6
                             callback_retries = 0
 
                             while callback_retries < max_callback_retries:
@@ -345,6 +345,7 @@ class PaymentViewSet(viewsets.ViewSet):
                                         ticket_details = f"Ticket Number: {ticket.ticket_number}\n"
                                         ticket_details += f"User Name: {request.user.first_name} {request.user.last_name}\n"
                                         ticket_details += f"User Phone: {user_phone}\n"
+                                        ticket_details += f"User Email: {request.user.email}\n"
                                         ticket_details += f"Amount: {response_data_second_callback.get('mc')}\n"  # Assuming 'mc' is the amount
                                         ticket_details += f"Seat Numbers: {ticket.seat_numbers}\n"
                                         ticket_details += f"Mode of Payment: {response_data_second_callback.get('channel')}"
@@ -893,75 +894,6 @@ class VideoViewSet(viewsets.ViewSet):
 
         return Response(dict_response)
 
-    # def retrieve(self, request, pk=None):
-    #     # Ensure that the user is authenticated
-    #     if not request.user.is_authenticated:
-    #         return Response(
-    #             {"error": True, "message": "Authentication required"},
-    #             status=status.HTTP_401_UNAUTHORIZED
-    #         )
-    #
-    #     queryset = Video.objects.all()
-    #     video = get_object_or_404(queryset, pk=pk)
-    #
-    #     # Check if the user has made a payment for this video
-    #     try:
-    #         # Make sure the user is authenticated before querying the VideoPayment
-    #         video_payment = VideoPayment.objects.get(user=request.user, video=video)
-    #         current_datetime = timezone.now()
-    #         expiration_date = video_payment.added_on + timedelta(days=int(video_payment.amount))
-    #
-    #         if current_datetime <= expiration_date:
-    #             # Calculate remaining access time based on pricing tiers
-    #             pricing_tiers = video.video_available.first()  # Assuming the pricing tiers are the same for all durations
-    #             remaining_access_time = None
-    #
-    #             if video_payment.amount == pricing_tiers.three_price:
-    #                 remaining_access_time = 3  # Access for 3 days
-    #             elif video_payment.amount == pricing_tiers.seven_price:
-    #                 remaining_access_time = 7  # Access for 7 days
-    #             elif video_payment.amount == pricing_tiers.fourteen_price:
-    #                 remaining_access_time = 14  # Access for 14 days
-    #
-    #             if remaining_access_time is not None and remaining_access_time == 0:
-    #                 # Access has expired, return an error response
-    #                 return Response(
-    #                     {"error": True, "message": "Access to this video has expired"},
-    #                     status=status.HTTP_403_FORBIDDEN
-    #                 )
-    #
-    #             serializer = VideoSerializer(video, context={"request": request})
-    #
-    #             serializer_data = serializer.data
-    #
-    #             # Access video_casts associated with the current video
-    #             video_casts = VideoCast.objects.filter(video_id=serializer_data["id"])
-    #             video_casts_serializer = VideoCastSerializer(video_casts, many=True)
-    #             serializer_data["video_casts"] = video_casts_serializer.data
-    #
-    #             # Access video_available associated with the current video
-    #             video_available = VideoAvailability.objects.filter(video_id=serializer_data["id"])
-    #             video_available_serializer = VideoAvailabilitySerializer(video_available, many=True)
-    #             serializer_data["video_available"] = video_available_serializer.data
-    #
-    #             serializer_data["remaining_access_time"] = remaining_access_time
-    #
-    #             return Response({"error": False, "message": "Single Data Fetch", "data": serializer_data})
-    #
-    #         else:
-    #             # Access has expired, return an error response
-    #             return Response(
-    #                 {"error": True, "message": "Access to this video has expired"},
-    #                 status=status.HTTP_403_FORBIDDEN
-    #             )
-    #
-    #     except VideoPayment.DoesNotExist:
-    #         # No payment made, return an error response
-    #         return Response(
-    #             {"error": True, "message": "No payment made for this video"},
-    #             status=status.HTTP_403_FORBIDDEN
-    #         )
-
     def retrieve(self, request, pk=None):
         queryset = Video.objects.all()
         video = get_object_or_404(queryset, pk=pk)
@@ -1047,13 +979,51 @@ class VideoCastViewSet(viewsets.ViewSet):
         return Response({"error": False, "message": "Payment Removed"})
 
 
-class MyStreamListView(generics.ListAPIView):
-    serializer_class = MyStreamSerializer  # Use your custom serializer
-    permission_classes = [IsAuthenticated]  # Ensure the user is authenticated
+class MyStreamListView(viewsets.ViewSet):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        # Filter plays by the currently authenticated user
-        return Video.objects.all()
+    def list(self, request):
+        # Get the currently authenticated user
+        user = request.user
+
+        # Retrieve video payments made by the user
+        video_payments = VideoPayments.objects.filter(user=user)
+
+        # Initialize a list to store active videos
+        active_videos = []
+
+        for video_payment in video_payments:
+            video = video_payment.video
+
+            # Query the pricing tiers for the associated video
+            pricing_tiers = VideoAvailability.objects.filter(video_id=video).first()
+
+            # Convert the payment amount and pricing tiers to integers for comparison
+            payment_amount = int(video_payment.amount)
+            three_price = int(pricing_tiers.three_price)
+            seven_price = int(pricing_tiers.seven_price)
+            fourteen_price = int(pricing_tiers.fourteen_price)
+
+            # Check if the payment amount corresponds to an active video
+            if (
+                payment_amount == three_price
+                or payment_amount == seven_price
+                or payment_amount == fourteen_price
+            ):
+                active_videos.append(video)
+
+        if not active_videos:
+            # No active videos found, return an error message
+            return Response(
+                {"error": True, "message": "No active videos. Please rent a video to play."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Serialize the active videos and return the response
+        serializer = MyStreamSerializer(active_videos, many=True, context={"request": request})
+        response_dict = {"error": False, "message": "Active Videos List Data", "data": serializer.data}
+        return Response(response_dict, status=status.HTTP_200_OK)
 
 
 class VideoPaymentViewSet(viewsets.ViewSet):
@@ -1137,7 +1107,7 @@ class VideoPaymentViewSet(viewsets.ViewSet):
         # Make a POST request to your payment gateway
         response = requests.post('https://apis.ipayafrica.com/payments/v2/transact', data=request_data)
         # print(response.text)
-        print(request_data)
+        # print(request_data)
 
         # Try to extract the SID from the response
         sid = response.json().get('data', {}).get('sid')
@@ -1159,8 +1129,8 @@ class VideoPaymentViewSet(viewsets.ViewSet):
             # Make a POST request to your STK PUSH endpoint
             response_stk = requests.post('https://apis.ipayafrica.com/payments/v2/transact/push/mpesa',
                                          json=request_data_stk)
-            print(request_data_stk)
-            print(response_stk.text)
+            # print(request_data_stk)
+            # print(response_stk.text)
 
             if response_stk.status_code == 200:
                 response_data_stk = response_stk.json()
@@ -1190,12 +1160,12 @@ class VideoPaymentViewSet(viewsets.ViewSet):
                             'sid': sid,
                             'hash': generated_hash_callback,
                         }
-                        print(request_data_callback)
+                        # print(request_data_callback)
 
                         response_callback = requests.post(
                             'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
                             json=request_data_callback)
-                        print(response_callback.text)
+                        # print(response_callback.text)
 
                         if response_callback.status_code == 400:
                             response_data_callback = response_callback.json()
@@ -1221,7 +1191,7 @@ class VideoPaymentViewSet(viewsets.ViewSet):
                                     'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
                                     json=request_data_second_callback
                                 )
-                                print(response_second_callback.text)
+                                # print(response_second_callback.text)
 
                                 if response_second_callback.status_code == 200:
                                     response_data_second_callback = response_second_callback.json()

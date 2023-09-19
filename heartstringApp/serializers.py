@@ -188,16 +188,15 @@ class VideoSerializer(serializers.ModelSerializer):
 
 
 class MyStreamSerializer(serializers.ModelSerializer):
-    # user = UserCreateSerializer(read_only=True)
+    user = UserCreateSerializer(read_only=True)
 
     class Meta:
         model = Video
         fields = '__all__'
 
-    # def to_representation(self, instance):
-    #     response = super().to_representation(instance)
-    #     response["user"] = UserCreateSerializer(instance.user_id).data
-    #     return response
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        return representation
 
 
 class VideoCastSerializer(serializers.ModelSerializer):
