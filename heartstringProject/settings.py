@@ -87,7 +87,6 @@ REST_FRAMEWORK = {
 
 AUTHENTICATION_BACKENDS = (
     'social_core.backends.google.GoogleOAuth2',
-    'social_core.backends.facebook.FacebookOAuth2',
     'django.contrib.auth.backends.ModelBackend'
 )
 
@@ -106,7 +105,7 @@ DJOSER = {
     'ACTIVATION_URL': 'activate/{uid}/{token}',
     'SEND_ACTIVATION_EMAIL': True,
     'SOCIAL_AUTH_TOKEN_STRATEGY': 'djoser.social.token.jwt.TokenStrategy',
-    'SOCIAL_AUTH_ALLOWED_REDIRECT_URIS': ['http://localhost:3000'],
+    'SOCIAL_AUTH_ALLOWED_REDIRECT_URIS': ['http://localhost:5173', 'http://heartstringsentertainment.co.ke', 'https://heartstringsentertainment.co.ke'],
     'SERIALIZERS': {
         'user_create': 'heartstringApp.serializers.UserCreateSerializer',
         'user': 'heartstringApp.serializers.CustomUserSerializer',
@@ -116,11 +115,11 @@ DJOSER = {
 }
 
 # Social auth settings
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = '986287740465-4bnq9d9ssfv3te1i45g1pc032iak4f9m.apps.googleusercontent.com'
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = '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'
 
-SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = '1164711596-p5kfhp9la2n1qm49dah7otobco81s2j0.apps.googleusercontent.com'
-SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = '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'
-SOCIAL_AUTH_GOOGLE_OAUTH2_WHITELISTED_DOMAINS = ['http://localhost:3000']
-SOCIAL_AUTH_ALLOWED_REDIRECT_URIS = ['http://localhost:3000']
+SOCIAL_AUTH_GOOGLE_OAUTH2_WHITELISTED_DOMAINS = ['http://localhost:5173', 'http://heartstringsentertainment.co.ke', 'https://heartstringsentertainment.co.ke']
+SOCIAL_AUTH_ALLOWED_REDIRECT_URIS = ['http://localhost:5173', 'http://heartstringsentertainment.co.ke', 'https://heartstringsentertainment.co.ke']
 SOCIAL_AUTH_GOOGLE_OAUTH2_SCOPE = [
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
@@ -144,6 +143,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'social_django.context_processors.backends',
+                'social_django.context_processors.login_redirect',
             ],
         },
     },
@@ -183,8 +184,8 @@ DATABASES = {
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
-EMAIL_HOST_USER = 'tarasecompany@gmail.com'
-EMAIL_HOST_PASSWORD = 'oaaexdecbgioeyea'
+EMAIL_HOST_USER = 'dev.heartstringsentertainment@gmail.com'
+EMAIL_HOST_PASSWORD = 'xpnw wphu uvfs dclm'
 EMAIL_USE_TLS = True
 
 # Password validation
