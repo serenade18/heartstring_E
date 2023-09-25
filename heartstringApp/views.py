@@ -1361,7 +1361,7 @@ class HomeApiViewSet(viewsets.ViewSet):
             start_date = end_date - timedelta(weeks=12)  # Adjust the number of weeks as needed
 
             weekly_ticket_date = Ticket.objects.filter(
-                added_on__range=[start_date, end_date]
+                added_on__range=[start_date, end_date], purchased=1
             ).order_by().values("added_on__week", "added_on__year").distinct()
 
             weekly_ticket_chart_list = []
@@ -1386,34 +1386,34 @@ class HomeApiViewSet(viewsets.ViewSet):
 
                 weekly_ticket_chart_list.append({"start_date": week_start_date, "end_date": week_end_date, "amt": weekly_ticket_total})
 
-                # Calculate the start and end date for the desired time range
-                end_date = date.today()
-                start_date = end_date - timedelta(weeks=12)  # Adjust the number of weeks as needed
+            # Calculate the start and end date for the desired time range
+            end_date = date.today()
+            start_date = end_date - timedelta(weeks=12)  # Adjust the number of weeks as needed
 
-                weekly_stream_date = VideoPayments.objects.filter(
-                    added_on__range=[start_date, end_date]
-                ).order_by().values("added_on__week", "added_on__year").distinct()
+            weekly_stream_date = VideoPayments.objects.filter(
+                added_on__range=[start_date, end_date]
+            ).order_by().values("added_on__week", "added_on__year").distinct()
 
-                weekly_stream_chart_list = []
+            weekly_stream_chart_list = []
 
-                for week in weekly_stream_date:
-                    access_week = week["added_on__week"]
-                    access_year = week["added_on__year"]
+            for week in weekly_stream_date:
+                access_week = week["added_on__week"]
+                access_year = week["added_on__year"]
 
-                    # Calculate the start and end dates for the current week
-                    week_start_date = date.fromisocalendar(access_year, access_week, 1)
-                    week_end_date = date.fromisocalendar(access_year, access_week, 7)
+                # Calculate the start and end dates for the current week
+                week_start_date = date.fromisocalendar(access_year, access_week, 1)
+                week_end_date = date.fromisocalendar(access_year, access_week, 7)
 
-                    weekly_stream_data = VideoPayments.objects.filter(
-                        added_on__range=[week_start_date, week_end_date]
-                    )
+                weekly_stream_data = VideoPayments.objects.filter(
+                    added_on__range=[week_start_date, week_end_date]
+                )
 
-                    weekly_stream_total = 0
+                weekly_stream_total = 0
 
-                    for weekly_single_stream in weekly_stream_data:
-                        weekly_stream_total += float(weekly_single_stream.amount)
+                for weekly_single_stream in weekly_stream_data:
+                    weekly_stream_total += float(weekly_single_stream.amount)
 
-                    weekly_stream_chart_list.append({"start_date": week_start_date, "end_date": week_end_date, "amt": weekly_stream_total})
+                weekly_stream_chart_list.append({"start_date": week_start_date, "end_date": week_end_date, "amt": weekly_stream_total})
 
             dict_response = {
                 "error": False,
