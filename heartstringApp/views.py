@@ -1344,89 +1344,32 @@ class HomeApiViewSet(viewsets.ViewSet):
             return Response({"error": True, "message": "User does not have enough permission to perform this task"}, \
                             status=status.HTTP_401_UNAUTHORIZED)
         try:
-            customer_count = UserAccount.objects.filter(is_staff=0)
-            customer_count_serializer = UserCreateSerializer(customer_count, many=True, context={"request": request})
+            # Get the current week and year
+            current_date = datetime.today()
+            current_week = current_date.isocalendar()[1]
+            current_year = current_date.year
 
-            video_count = Video.objects.all()
-            video_count_serializer = VideoSerializer(video_count, many=True, context={"request": request})
+            # Calculate weekly ticket totals
+            weekly_ticket_data = Ticket.objects.filter(added_on__week=current_week, added_on__year=current_year,
+                                                       purchased=True)
+            weekly_ticket_total = sum(float(weekly_single_ticket.price) for weekly_single_ticket in weekly_ticket_data)
 
-            play_count = Play.objects.filter(is_available=1)
-            play_count_serializer = PlaySerializer(play_count, many=True, context={"request": request})
-
-            ticket_count = Ticket.objects.filter(purchased=1)
-            ticket_count_serializer = TicketsSerializer(ticket_count, many=True, context={"request": request})
-
-            # Calculate the start and end date for the desired time range
-            end_date = date.today()
-            start_date = end_date - timedelta(weeks=12)  # Adjust the number of weeks as needed
-
-            weekly_ticket_date = Ticket.objects.filter(
-                added_on__range=[start_date, end_date], purchased=1
-            ).order_by().values("added_on__week", "added_on__year").distinct()
-
-            weekly_ticket_chart_list = []
-
-            for week in weekly_ticket_date:
-                access_week = week["added_on__week"]
-                access_year = week["added_on__year"]
-
-                # Calculate the start and end dates for the current week
-                week_start_date = date.fromisocalendar(access_year, access_week, 1)
-                week_end_date = date.fromisocalendar(access_year, access_week, 7)
-
-                weekly_ticket_data = Ticket.objects.filter(
-                    added_on__range=[week_start_date, week_end_date],
-                    purchased=True
-                )
-
-                weekly_ticket_total = 0
-
-                for weekly_single_ticket in weekly_ticket_data:
-                    weekly_ticket_total += float(weekly_single_ticket.price)
-
-                weekly_ticket_chart_list.append({"start_date": week_start_date, "end_date": week_end_date, "amt": weekly_ticket_total})
-
-            # Calculate the start and end date for the desired time range
-            end_date = date.today()
-            start_date = end_date - timedelta(weeks=12)  # Adjust the number of weeks as needed
-
-            weekly_stream_date = VideoPayments.objects.filter(
-                added_on__range=[start_date, end_date]
-            ).order_by().values("added_on__week", "added_on__year").distinct()
-
-            weekly_stream_chart_list = []
-
-            for week in weekly_stream_date:
-                access_week = week["added_on__week"]
-                access_year = week["added_on__year"]
-
-                # Calculate the start and end dates for the current week
-                week_start_date = date.fromisocalendar(access_year, access_week, 1)
-                week_end_date = date.fromisocalendar(access_year, access_week, 7)
-
-                weekly_stream_data = VideoPayments.objects.filter(
-                    added_on__range=[week_start_date, week_end_date]
-                )
-
-                weekly_stream_total = 0
-
-                for weekly_single_stream in weekly_stream_data:
-                    weekly_stream_total += float(weekly_single_stream.amount)
-
-                weekly_stream_chart_list.append({"start_date": week_start_date, "end_date": week_end_date, "amt": weekly_stream_total})
+            # Calculate weekly stream totals
+            weekly_stream_data = VideoPayments.objects.filter(added_on__week=current_week, added_on__year=current_year)
+            weekly_stream_total = sum(float(weekly_single_stream.amount) for weekly_single_stream in weekly_stream_data)
 
             dict_response = {
                 "error": False,
                 "message": "Dashboard api",
-                "users": len(customer_count_serializer.data),
-                "active_streams": len(video_count_serializer.data),
-                "active_plays": len(play_count_serializer.data),
-                "tickets_sold": len(ticket_count_serializer.data),
-                "weekly_tickets": weekly_ticket_chart_list,
-                "weekly_streams": weekly_stream_chart_list
+                "users": len(UserAccount.objects.filter(is_staff=0)),
+                "active_streams": len(Video.objects.all()),
+                "active_plays": len(Play.objects.filter(is_available=1)),
+                "tickets_sold": len(Ticket.objects.filter(purchased=1)),
+                "weekly_tickets": [{"date": current_date.strftime("%Y-%m-%d"), "amt": weekly_ticket_total}],
+                "weekly_streams": [{"date": current_date.strftime("%Y-%m-%d"), "amt": weekly_stream_total}]
             }
-        except:
-            dict_response = {"error": True, "message": "Error performing task"}
+        except Exception as e:
+            dict_response = {"error": True, "message": f"Error performing task: {str(e)}"}
 
         return Response(dict_response)
 
