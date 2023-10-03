@@ -163,7 +163,6 @@ DATABASES = {
     }
 }
 
-
 # Mysql database
 #
 # DATABASES = {

@@ -23,15 +23,17 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from heartstringApp import serializers
-from heartstringApp.models import Ticket, Payment, Play, Video, VideoPayment, PlayCast, Bogof, OtherOffers, PlayTime, \
+from heartstringApp.models import Ticket, Payment, Play, Video, PlayCast, Bogof, OtherOffers, PlayTime, \
     VideoCast, VideoAvailability, UserAccount, VideoPayments
 from heartstringApp.serializers import TicketsSerializer, PaymentSerializer, PlaySerializer, \
     PlayCastSerializer, OfferSerializer, VideoSerializer, VideoCastSerializer, VideoPaymentSerializer, \
     VideoAvailabilitySerializer, OtherOfferSerializer, PlayDateSerializer, UserCreateSerializer, UserAccountSerializer, \
     MyPlaySerializer, MyStreamSerializer
 
+from django.contrib.auth import get_user_model
 
-# Create your views here.
+User = get_user_model()
+# Create your views here
 # master password: lenu9WcCPuS5tmLpCA7q
 # master username: postgres
 
@@ -68,13 +70,33 @@ class UserAccountUpdateView(generics.UpdateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
-        # If the requesting user is an admin and a user_id is provided in the URL, update the specified user's details
         user_id = self.kwargs.get('user_id')
-        if user_id and self.request.user.is_staff:
-            return get_object_or_404(UserAccount, id=user_id)
+        user = self.request.user
 
-        # Otherwise, update the details of the authenticated user
-        return self.request.user
+        if user_id:
+            # If a user_id is provided, check if the user is an admin
+            if user.is_staff:
+                # Admin can edit name and phone of other users
+                return get_object_or_404(User, id=user_id)
+
+        # If no user_id or if the user is not an admin, allow users to update their own accounts
+        return user
+
+    def perform_update(self, serializer):
+        user = self.request.user
+
+        if user.is_staff:
+            # Admins can update the name and phone without email uniqueness check
+            serializer.save()
+        else:
+            # Regular users can update all fields, including email, with email uniqueness check
+            email = serializer.validated_data.get('email')
+            instance = serializer.instance
+
+            if email and User.objects.exclude(pk=instance.pk).filter(email=email).exists():
+                raise serializers.ValidationError("User with this email already exists.")
+
+            serializer.save()
 
 
 class UserAccountDeleteView(generics.DestroyAPIView):
@@ -325,7 +347,7 @@ class PaymentViewSet(viewsets.ViewSet):
                             }
 
                             # Define the maximum number of callback retries
-                            max_callback_retries = 6
+                            max_callback_retries = 8
                             callback_retries = 0
 
                             while callback_retries < max_callback_retries:
@@ -396,7 +418,7 @@ class PaymentViewSet(viewsets.ViewSet):
                                     elif response_data_second_callback.get("status") == "bdi6p2yy76etrs":
                                         # Status is incomplete, increment retry count and wait before retrying
                                         callback_retries += 1
-                                        sleep(3)  # Wait for 3 seconds before retrying
+                                        sleep(5)  # Wait for 3 seconds before retrying
 
                                     else:
                                         # Handle unexpected status, you might want to log this
@@ -1018,7 +1040,24 @@ class MyStreamListView(viewsets.ViewSet):
                     # Access has expired, skip this video
                     continue
 
-                active_videos.append(video)
+                # Create a dictionary for the active video
+                active_video_data = {
+                    'id': video.id,
+                    'title': video.title,
+                    'synopsis': video.synopsis,
+                    'video': video.video,
+                    'trailer': video.trailer,
+                    'video_poster': video.video_poster,
+                    'remaining_access_time': remaining_access_time,
+                    'added_on': video.added_on,
+                }
+
+                active_videos.append(active_video_data)
+            else:
+                # Add detailed error logging to help diagnose issues
+                print(f"Invalid payment amount for video {video.id}: {video_payment.amount}")
+                print(
+                    f"Pricing tiers: 3: {pricing_tiers.three_price}, 7: {pricing_tiers.seven_price}, 14: {pricing_tiers.fourteen_price}")
 
         if not active_videos:
             # No active videos found, return an error message
@@ -1029,7 +1068,14 @@ class MyStreamListView(viewsets.ViewSet):
 
         # Serialize the active videos and return the response
         serializer = MyStreamSerializer(active_videos, many=True, context={"request": request})
-        response_dict = {"error": False, "message": "Active Videos List Data", "data": serializer.data}
+
+        # Append the remaining_access_time to each video's data in the serialized response
+        data_with_remaining_access_time = serializer.data
+        for video_data, remaining_time in zip(data_with_remaining_access_time,
+                                              [video['remaining_access_time'] for video in active_videos]):
+            video_data['remaining_access_time'] = remaining_time
+
+        response_dict = {"error": False, "message": "Active Videos List Data", "data": data_with_remaining_access_time}
         return Response(response_dict, status=status.HTTP_200_OK)
 
     def retrieve(self, request, pk=None):
@@ -1111,6 +1157,139 @@ class MyStreamListView(viewsets.ViewSet):
                 {"error": True, "message": "No payment made for this video"},
                 status=status.HTTP_403_FORBIDDEN
             )
+# class MyStreamListView(viewsets.ViewSet):
+#     authentication_classes = [JWTAuthentication]
+#     permission_classes = [IsAuthenticated]
+#
+#     def list(self, request):
+#         # Get the currently authenticated user
+#         user = request.user
+#
+#         # Retrieve video payments made by the user
+#         video_payments = VideoPayments.objects.filter(user=user)
+#
+#         # Initialize a list to store active videos
+#         active_videos = []
+#
+#         for video_payment in video_payments:
+#             video = video_payment.video
+#             pricing_tiers = VideoAvailability.objects.filter(video_id=video).first()
+#
+#             # Check if the payment amount corresponds to an active video
+#             if (
+#                     video_payment.amount == int(pricing_tiers.three_price)
+#                     or video_payment.amount == int(pricing_tiers.seven_price)
+#                     or video_payment.amount == int(pricing_tiers.fourteen_price)
+#             ):
+#                 # Calculate the remaining days based on the payment's added_on date
+#                 current_datetime = timezone.now()
+#                 days_difference = (current_datetime - video_payment.added_on).days
+#
+#                 remaining_access_time = None
+#                 if video_payment.amount == int(pricing_tiers.three_price):
+#                     remaining_access_time = 3 - days_difference  # Access for 3 days
+#                 elif video_payment.amount == int(pricing_tiers.seven_price):
+#                     remaining_access_time = 7 - days_difference  # Access for 7 days
+#                 elif video_payment.amount == int(pricing_tiers.fourteen_price):
+#                     remaining_access_time = 14 - days_difference  # Access for 14 days
+#
+#                 if remaining_access_time <= 0:
+#                     # Access has expired, skip this video
+#                     continue
+#
+#                 active_videos.append(video)
+#
+#         if not active_videos:
+#             # No active videos found, return an error message
+#             return Response(
+#                 {"error": True, "message": "No active videos. Please rent a video to play."},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+#
+#         # Serialize the active videos and return the response
+#         serializer = MyStreamSerializer(active_videos, many=True, context={"request": request})
+#         response_dict = {"error": False, "message": "Active Videos List Data", "data": serializer.data}
+#         return Response(response_dict, status=status.HTTP_200_OK)
+#
+#     def retrieve(self, request, pk=None):
+#         # Ensure that the user is authenticated
+#         if not request.user.is_authenticated:
+#             return Response(
+#                 {"error": True, "message": "Authentication required"},
+#                 status=status.HTTP_401_UNAUTHORIZED
+#             )
+#
+#         queryset = Video.objects.all()
+#         video = get_object_or_404(queryset, pk=pk)
+#
+#         # Check if the user has made a payment for this video
+#         try:
+#             # Make sure the user is authenticated before querying the VideoPayment
+#             video_payment = VideoPayments.objects.get(user=request.user, video=video)
+#             current_datetime = timezone.now()
+#
+#             # Query the pricing tiers for the associated video
+#             pricing_tiers = VideoAvailability.objects.filter(video_id=video).first()
+#
+#             # Convert the payment amount and pricing tiers to integers for comparison
+#             payment_amount = int(video_payment.amount)
+#             three_price = int(pricing_tiers.three_price)
+#             seven_price = int(pricing_tiers.seven_price)
+#             fourteen_price = int(pricing_tiers.fourteen_price)
+#
+#             if (
+#                     payment_amount != three_price
+#                     and payment_amount != seven_price
+#                     and payment_amount != fourteen_price
+#             ):
+#                 # The payment amount does not match any pricing tier
+#                 return Response(
+#                     {"error": True, "message": "Invalid payment amount for this video"},
+#                     status=status.HTTP_400_BAD_REQUEST
+#                 )
+#
+#             # Calculate the remaining days based on the payment's added_on date
+#             days_difference = (current_datetime - video_payment.added_on).days
+#
+#             remaining_access_time = None
+#             if payment_amount == three_price:
+#                 remaining_access_time = 3 - days_difference  # Access for 3 days
+#             elif payment_amount == seven_price:
+#                 remaining_access_time = 7 - days_difference  # Access for 7 days
+#             elif payment_amount == fourteen_price:
+#                 remaining_access_time = 14 - days_difference  # Access for 14 days
+#
+#             if remaining_access_time <= 0:
+#                 # Access has expired, return an error response
+#                 return Response(
+#                     {"error": True, "message": "Access to this video has expired"},
+#                     status=status.HTTP_403_FORBIDDEN
+#                 )
+#
+#             serializer = MyStreamSerializer(video, context={"request": request})
+#
+#             serializer_data = serializer.data
+#
+#             # Access video_casts associated with the current video
+#             video_casts = VideoCast.objects.filter(video_id=serializer_data["id"])
+#             video_casts_serializer = VideoCastSerializer(video_casts, many=True)
+#             serializer_data["video_casts"] = video_casts_serializer.data
+#
+#             # Access video_available associated with the current video
+#             video_available = VideoAvailability.objects.filter(video_id=serializer_data["id"])
+#             video_available_serializer = VideoAvailabilitySerializer(video_available, many=True)
+#             serializer_data["video_available"] = video_available_serializer.data
+#
+#             serializer_data["remaining_access_time"] = remaining_access_time
+#
+#             return Response({"error": False, "message": "Single Data Fetch", "data": serializer_data})
+#
+#         except VideoPayments.DoesNotExist:
+#             # No payment made, return an error response
+#             return Response(
+#                 {"error": True, "message": "No payment made for this video"},
+#                 status=status.HTTP_403_FORBIDDEN
+#             )
 
 
 class VideoPaymentViewSet(viewsets.ViewSet):
@@ -1353,10 +1532,70 @@ class HomeApiViewSet(viewsets.ViewSet):
             weekly_ticket_data = Ticket.objects.filter(added_on__week=current_week, added_on__year=current_year,
                                                        purchased=True)
             weekly_ticket_total = sum(float(weekly_single_ticket.price) for weekly_single_ticket in weekly_ticket_data)
+            ticket_weekly_chart_list = []
+            ticket_weekly_chart_list.append({"date": current_date.strftime("%Y-%m-%d"), "amt": weekly_ticket_total})
 
             # Calculate weekly stream totals
             weekly_stream_data = VideoPayments.objects.filter(added_on__week=current_week, added_on__year=current_year)
             weekly_stream_total = sum(float(weekly_single_stream.amount) for weekly_single_stream in weekly_stream_data)
+
+            # get daily ticket data
+            ticket_dates = Ticket.objects.order_by().values("added_on__date").distinct()
+            ticket_daily_chart_list = []
+            for dates in ticket_dates:
+                access_date = dates["added_on__date"]
+
+                ticket_data = Ticket.objects.filter(added_on__date=access_date, purchased=True)
+                ticket_amt_inner = 0
+
+                for ticketsingle in ticket_data:
+                    ticket_amt_inner += float(ticketsingle.price)
+
+                ticket_daily_chart_list.append({"date": access_date, "amt": ticket_amt_inner})
+
+            # get daily stream data
+            stream_dates = VideoPayments.objects.order_by().values("added_on__date").distinct()
+            stream_daily_chart_list = []
+            for dates in stream_dates:
+                access_date = dates["added_on__date"]
+
+                stream_data = VideoPayments.objects.filter(added_on__date=access_date)
+                stream_amt_inner = 0
+
+                for streamsingle in stream_data:
+                    stream_amt_inner += float(streamsingle.amount)
+
+                stream_daily_chart_list.append({"date": access_date, "amt": stream_amt_inner})
+
+            # get monthly stream data
+            stream_month = VideoPayments.objects.order_by().values("added_on__month", "added_on__year").distinct()
+            stream_monthly_chart_list = []
+            for month in stream_month:
+                access_month = month["added_on__month"]
+                access_year = month["added_on__year"]
+
+                stream_data = VideoPayments.objects.filter(added_on__month=access_month, added_on__year=access_year)
+                stream_month_inner = 0
+                access_date = date(year=access_year, month=access_month, day=1)
+                for streammonth in stream_data:
+                    stream_month_inner += float(streammonth.amount)
+
+                stream_monthly_chart_list.append({"date": access_date, "amt": stream_month_inner})
+
+            # get monthly ticket data
+            ticket_month = Ticket.objects.order_by().values("added_on__month", "added_on__year").distinct()
+            ticket_monthly_chart_list = []
+            for month in ticket_month:
+                access_month = month["added_on__month"]
+                access_year = month["added_on__year"]
+
+                stream_data = Ticket.objects.filter(added_on__month=access_month, added_on__year=access_year, purchased=True)
+                stream_month_inner = 0
+                access_date = date(year=access_year, month=access_month, day=1)
+                for streammonth in stream_data:
+                    stream_month_inner += float(streammonth.price)
+
+                ticket_monthly_chart_list.append({"date": access_date, "amt": stream_month_inner})
 
             dict_response = {
                 "error": False,
@@ -1365,8 +1604,12 @@ class HomeApiViewSet(viewsets.ViewSet):
                 "active_streams": len(Video.objects.all()),
                 "active_plays": len(Play.objects.filter(is_available=1)),
                 "tickets_sold": len(Ticket.objects.filter(purchased=1)),
-                "weekly_tickets": [{"date": current_date.strftime("%Y-%m-%d"), "amt": weekly_ticket_total}],
-                "weekly_streams": [{"date": current_date.strftime("%Y-%m-%d"), "amt": weekly_stream_total}]
+                "weekly_tickets": ticket_weekly_chart_list,
+                "weekly_streams": [{"date": current_date.strftime("%Y-%m-%d"), "amt": weekly_stream_total}],
+                "daily_tickets": ticket_daily_chart_list,
+                "daily_stream": stream_daily_chart_list,
+                "monthly_stream": stream_monthly_chart_list,
+                "monthly_ticket": ticket_monthly_chart_list,
             }
         except Exception as e:
             dict_response = {"error": True, "message": f"Error performing task: {str(e)}"}

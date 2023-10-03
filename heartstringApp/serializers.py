@@ -7,7 +7,7 @@ from djoser.serializers import UserCreateSerializer, UserSerializer
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from heartstringApp.models import UserAccount, Play, PlayCast, Bogof, Ticket, Payment, Video, VideoCast, VideoPayment, \
+from heartstringApp.models import UserAccount, Play, PlayCast, Bogof, Ticket, Payment, Video, VideoCast, \
     VideoAvailability, OtherOffers, PlayTime, VideoPayments
 
 User = get_user_model()
@@ -55,23 +55,22 @@ class CustomUserSerializer(UserSerializer):
 
 
 class UserAccountSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=False)
-
     class Meta:
         model = User
-        fields = ('first_name', 'last_name', 'email', 'phone', 'password')
+        fields = ('first_name', 'last_name', 'email', 'phone')
 
     def update(self, instance, validated_data):
-        # Update password if provided
-        password = validated_data.pop('password', None)
-        if password:
-            instance.password = make_password(password)  # Hash the new password
-
-        # Update other fields
-        instance.first_name = validated_data.get('first_name', instance.first_name)
-        instance.last_name = validated_data.get('last_name', instance.last_name)
-        instance.email = validated_data.get('email', instance.email)
-        instance.phone = validated_data.get('phone', instance.phone)
+        # Allow admins to update name and phone without email uniqueness check
+        if self.context['request'].user.is_staff:
+            instance.first_name = validated_data.get('first_name', instance.first_name)
+            instance.last_name = validated_data.get('last_name', instance.last_name)
+            instance.phone = validated_data.get('phone', instance.phone)
+        else:
+            # For regular users, update all fields
+            instance.first_name = validated_data.get('first_name', instance.first_name)
+            instance.last_name = validated_data.get('last_name', instance.last_name)
+            instance.email = validated_data.get('email', instance.email)
+            instance.phone = validated_data.get('phone', instance.phone)
 
         instance.save()
         return instance
