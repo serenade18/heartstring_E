@@ -42,9 +42,9 @@ INSTALLED_APPS = [
     'djoser',
     'rest_framework',
     'rest_framework.authtoken',
+    'social_django',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
-    'social_django',
     'social_core',
     'corsheaders'
 ]
@@ -91,7 +91,8 @@ AUTHENTICATION_BACKENDS = (
 )
 
 # Djoser settings
-
+DOMAIN = 'heartstringsentertainment.co.ke'
+SITE_NAME = 'Heartsrings Entertainment'
 DJOSER = {
     'LOGIN_FIELD': 'email',
     'USER_CREATE_PASSWORD_RETYPE': True,

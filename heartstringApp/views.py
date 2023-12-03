@@ -12,13 +12,11 @@ import qrcode
 import requests
 from django.core.files.base import ContentFile, File
 from django.utils import timezone
-from django.http import JsonResponse
-from django.shortcuts import render, get_object_or_404
-from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import get_object_or_404
 from djoser.views import UserViewSet
-from rest_framework import viewsets, status, generics, permissions
+from rest_framework import viewsets, status, generics
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
@@ -27,7 +25,7 @@ from heartstringApp.models import Ticket, Payment, Play, Video, PlayCast, Bogof,
     VideoCast, VideoAvailability, UserAccount, VideoPayments
 from heartstringApp.serializers import TicketsSerializer, PaymentSerializer, PlaySerializer, \
     PlayCastSerializer, OfferSerializer, VideoSerializer, VideoCastSerializer, VideoPaymentSerializer, \
-    VideoAvailabilitySerializer, OtherOfferSerializer, PlayDateSerializer, UserCreateSerializer, UserAccountSerializer, \
+    VideoAvailabilitySerializer, OtherOfferSerializer, PlayDateSerializer, UserAccountSerializer, \
     MyPlaySerializer, MyStreamSerializer
 
 from django.contrib.auth import get_user_model
@@ -777,7 +775,7 @@ class VideoViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
 
     def list(self, request):
-        videos = Video.objects.all()
+        videos = Video.objects.all().order_by('-id')
         serializer = VideoSerializer(videos, many=True, context={"request": request})
         response_dict = {"error": False, "message": "All Videos List Data", "data": serializer.data}
         return Response(response_dict)
@@ -1157,139 +1155,6 @@ class MyStreamListView(viewsets.ViewSet):
                 {"error": True, "message": "No payment made for this video"},
                 status=status.HTTP_403_FORBIDDEN
             )
-# class MyStreamListView(viewsets.ViewSet):
-#     authentication_classes = [JWTAuthentication]
-#     permission_classes = [IsAuthenticated]
-#
-#     def list(self, request):
-#         # Get the currently authenticated user
-#         user = request.user
-#
-#         # Retrieve video payments made by the user
-#         video_payments = VideoPayments.objects.filter(user=user)
-#
-#         # Initialize a list to store active videos
-#         active_videos = []
-#
-#         for video_payment in video_payments:
-#             video = video_payment.video
-#             pricing_tiers = VideoAvailability.objects.filter(video_id=video).first()
-#
-#             # Check if the payment amount corresponds to an active video
-#             if (
-#                     video_payment.amount == int(pricing_tiers.three_price)
-#                     or video_payment.amount == int(pricing_tiers.seven_price)
-#                     or video_payment.amount == int(pricing_tiers.fourteen_price)
-#             ):
-#                 # Calculate the remaining days based on the payment's added_on date
-#                 current_datetime = timezone.now()
-#                 days_difference = (current_datetime - video_payment.added_on).days
-#
-#                 remaining_access_time = None
-#                 if video_payment.amount == int(pricing_tiers.three_price):
-#                     remaining_access_time = 3 - days_difference  # Access for 3 days
-#                 elif video_payment.amount == int(pricing_tiers.seven_price):
-#                     remaining_access_time = 7 - days_difference  # Access for 7 days
-#                 elif video_payment.amount == int(pricing_tiers.fourteen_price):
-#                     remaining_access_time = 14 - days_difference  # Access for 14 days
-#
-#                 if remaining_access_time <= 0:
-#                     # Access has expired, skip this video
-#                     continue
-#
-#                 active_videos.append(video)
-#
-#         if not active_videos:
-#             # No active videos found, return an error message
-#             return Response(
-#                 {"error": True, "message": "No active videos. Please rent a video to play."},
-#                 status=status.HTTP_400_BAD_REQUEST
-#             )
-#
-#         # Serialize the active videos and return the response
-#         serializer = MyStreamSerializer(active_videos, many=True, context={"request": request})
-#         response_dict = {"error": False, "message": "Active Videos List Data", "data": serializer.data}
-#         return Response(response_dict, status=status.HTTP_200_OK)
-#
-#     def retrieve(self, request, pk=None):
-#         # Ensure that the user is authenticated
-#         if not request.user.is_authenticated:
-#             return Response(
-#                 {"error": True, "message": "Authentication required"},
-#                 status=status.HTTP_401_UNAUTHORIZED
-#             )
-#
-#         queryset = Video.objects.all()
-#         video = get_object_or_404(queryset, pk=pk)
-#
-#         # Check if the user has made a payment for this video
-#         try:
-#             # Make sure the user is authenticated before querying the VideoPayment
-#             video_payment = VideoPayments.objects.get(user=request.user, video=video)
-#             current_datetime = timezone.now()
-#
-#             # Query the pricing tiers for the associated video
-#             pricing_tiers = VideoAvailability.objects.filter(video_id=video).first()
-#
-#             # Convert the payment amount and pricing tiers to integers for comparison
-#             payment_amount = int(video_payment.amount)
-#             three_price = int(pricing_tiers.three_price)
-#             seven_price = int(pricing_tiers.seven_price)
-#             fourteen_price = int(pricing_tiers.fourteen_price)
-#
-#             if (
-#                     payment_amount != three_price
-#                     and payment_amount != seven_price
-#                     and payment_amount != fourteen_price
-#             ):
-#                 # The payment amount does not match any pricing tier
-#                 return Response(
-#                     {"error": True, "message": "Invalid payment amount for this video"},
-#                     status=status.HTTP_400_BAD_REQUEST
-#                 )
-#
-#             # Calculate the remaining days based on the payment's added_on date
-#             days_difference = (current_datetime - video_payment.added_on).days
-#
-#             remaining_access_time = None
-#             if payment_amount == three_price:
-#                 remaining_access_time = 3 - days_difference  # Access for 3 days
-#             elif payment_amount == seven_price:
-#                 remaining_access_time = 7 - days_difference  # Access for 7 days
-#             elif payment_amount == fourteen_price:
-#                 remaining_access_time = 14 - days_difference  # Access for 14 days
-#
-#             if remaining_access_time <= 0:
-#                 # Access has expired, return an error response
-#                 return Response(
-#                     {"error": True, "message": "Access to this video has expired"},
-#                     status=status.HTTP_403_FORBIDDEN
-#                 )
-#
-#             serializer = MyStreamSerializer(video, context={"request": request})
-#
-#             serializer_data = serializer.data
-#
-#             # Access video_casts associated with the current video
-#             video_casts = VideoCast.objects.filter(video_id=serializer_data["id"])
-#             video_casts_serializer = VideoCastSerializer(video_casts, many=True)
-#             serializer_data["video_casts"] = video_casts_serializer.data
-#
-#             # Access video_available associated with the current video
-#             video_available = VideoAvailability.objects.filter(video_id=serializer_data["id"])
-#             video_available_serializer = VideoAvailabilitySerializer(video_available, many=True)
-#             serializer_data["video_available"] = video_available_serializer.data
-#
-#             serializer_data["remaining_access_time"] = remaining_access_time
-#
-#             return Response({"error": False, "message": "Single Data Fetch", "data": serializer_data})
-#
-#         except VideoPayments.DoesNotExist:
-#             # No payment made, return an error response
-#             return Response(
-#                 {"error": True, "message": "No payment made for this video"},
-#                 status=status.HTTP_403_FORBIDDEN
-#             )
 
 
 class VideoPaymentViewSet(viewsets.ViewSet):
