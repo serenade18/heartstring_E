@@ -1087,10 +1087,12 @@ class MyStreamListView(viewsets.ViewSet):
         queryset = Video.objects.all()
         video = get_object_or_404(queryset, pk=pk)
 
-        # Check if the user has made a payment for this video
-        try:
-            # Make sure the user is authenticated before querying the VideoPayment
-            video_payment = VideoPayments.objects.get(user=request.user, video=video)
+        # Check if the user has made payments for this video
+        video_payments = VideoPayments.objects.filter(user=request.user, video=video).order_by('-added_on')
+
+        if video_payments.exists():
+            # Use the latest payment for the video
+            video_payment = video_payments.first()
             current_datetime = timezone.now()
 
             # Query the pricing tiers for the associated video
@@ -1149,7 +1151,7 @@ class MyStreamListView(viewsets.ViewSet):
 
             return Response({"error": False, "message": "Single Data Fetch", "data": serializer_data})
 
-        except VideoPayments.DoesNotExist:
+        else:
             # No payment made, return an error response
             return Response(
                 {"error": True, "message": "No payment made for this video"},
