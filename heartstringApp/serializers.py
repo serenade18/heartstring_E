@@ -7,10 +7,11 @@ from djoser.serializers import UserCreateSerializer, UserSerializer
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from heartstringApp.models import UserAccount, Play, PlayCast, Bogof, Ticket, Payment, Video, VideoCast, \
-    VideoAvailability, OtherOffers, PlayTime, VideoPayments
+from heartstringApp.models import UserAccount, Play, PlayCast, Ticket, Payment, Video, VideoCast, \
+    VideoAvailability, OtherOffers, PlayTime, VideoPayments, Seat, ViewHistory
 
 User = get_user_model()
+
 
 class UserCreateSerializer(UserCreateSerializer):
     user_type = serializers.CharField(default='normal', required=False)  # Add user_type field with default value
@@ -33,7 +34,7 @@ class CustomUserSerializer(UserSerializer):
     last_login = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
 
     class Meta(UserSerializer.Meta):
-        fields = ('id', 'email', 'first_name', 'last_name', 'phone', 'last_login')
+        fields = ('id', 'email', 'first_name', 'last_name', 'phone', 'user_type', 'added_on', 'last_login')
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -57,7 +58,7 @@ class CustomUserSerializer(UserSerializer):
 class UserAccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('first_name', 'last_name', 'email', 'phone')
+        fields = ('first_name', 'last_name', 'email', 'user_type', 'added_on', 'phone')
 
     def update(self, instance, validated_data):
         # Allow admins to update name and phone without email uniqueness check
@@ -109,17 +110,6 @@ class PlayCastSerializer(serializers.ModelSerializer):
         response = super().to_representation(instance)
         response["play"] = PlaySerializer(instance.play_id).data
         return response, representation
-
-
-class OfferSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Bogof
-        fields = '__all__'
-
-    def to_representation(self, instance):
-        response = super().to_representation(instance)
-        response["play"] = PlaySerializer(instance.play_id).data
-        return response
 
 
 class OtherOfferSerializer(serializers.ModelSerializer):
@@ -186,6 +176,18 @@ class VideoSerializer(serializers.ModelSerializer):
         return representation
 
 
+class ViewHistorySerializer(serializers.ModelSerializer):
+    user = UserCreateSerializer(read_only=True)
+
+    class Meta:
+        model = ViewHistory
+        fields = '__all__'
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        return representation
+
+
 class MyStreamSerializer(serializers.ModelSerializer):
     user = UserCreateSerializer(read_only=True)
 
@@ -233,3 +235,20 @@ class VideoPaymentSerializer(serializers.ModelSerializer):
         response["user"] = instance.user_id
         response["video"] = instance.video_id
         return response
+
+
+class SeatSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Seat
+        fields = '__all__'
+
+
+class BookSeatSerializer(serializers.Serializer):
+    seat_id = serializers.IntegerField()
+
+    def validate_seat_id(self, value):
+        try:
+            seat = Seat.objects.get(id=value, is_booked=False)  # Use is_booked instead of status
+        except Seat.DoesNotExist:
+            raise serializers.ValidationError("This seat is either booked or does not exist.")
+        return value

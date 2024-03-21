@@ -106,7 +106,7 @@ DJOSER = {
     'ACTIVATION_URL': 'activate/{uid}/{token}',
     'SEND_ACTIVATION_EMAIL': True,
     'SOCIAL_AUTH_TOKEN_STRATEGY': 'djoser.social.token.jwt.TokenStrategy',
-    'SOCIAL_AUTH_ALLOWED_REDIRECT_URIS': ['http://localhost:5173', 'http://heartstringsentertainment.co.ke', 'https://heartstringsentertainment.co.ke'],
+    'SOCIAL_AUTH_ALLOWED_REDIRECT_URIS': ['http://localhost:5173', 'https://heartstringsentertainment.co.ke'],
     'SERIALIZERS': {
         'user_create': 'heartstringApp.serializers.UserCreateSerializer',
         'user': 'heartstringApp.serializers.CustomUserSerializer',
@@ -119,8 +119,8 @@ DJOSER = {
 SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = '986287740465-4bnq9d9ssfv3te1i45g1pc032iak4f9m.apps.googleusercontent.com'
 SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = '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'
 
-SOCIAL_AUTH_GOOGLE_OAUTH2_WHITELISTED_DOMAINS = ['http://localhost:5173', 'http://heartstringsentertainment.co.ke', 'https://heartstringsentertainment.co.ke']
-SOCIAL_AUTH_ALLOWED_REDIRECT_URIS = ['http://localhost:5173', 'http://heartstringsentertainment.co.ke', 'https://heartstringsentertainment.co.ke']
+SOCIAL_AUTH_GOOGLE_OAUTH2_WHITELISTED_DOMAINS = ['localhost:5173', 'heartstringsentertainment.co.ke']
+SOCIAL_AUTH_ALLOWED_REDIRECT_URIS = ['http://localhost:5173',  'https://heartstringsentertainment.co.ke']
 SOCIAL_AUTH_GOOGLE_OAUTH2_SCOPE = [
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',

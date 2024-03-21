@@ -43,6 +43,7 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
     user_type = models.CharField(max_length=20, default='normal')
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    added_on = models.DateTimeField(auto_now_add=True)
 
     objects = UserAccountManager()
 
@@ -62,9 +63,11 @@ class Play(models.Model):
     id = models.AutoField(primary_key=True)
     title = models.CharField(max_length=100)
     synopsis = models.TextField()
-    poster = models.ImageField(upload_to='posters/')
-    infotrailer = models.FileField(upload_to='info-trailers/')
+    poster = models.ImageField(upload_to='posters/', null=True, blank=True)
+    infotrailer = models.FileField(upload_to='info-trailers/', null=True, blank=True)
     theater = models.CharField(choices=Theater.choices, max_length=255)
+    location = models.CharField(max_length=25655)
+    amount = models.CharField(max_length=255)
     is_available = models.BooleanField(default=False)
     added_on = models.DateTimeField(auto_now_add=True)
     objects = models.Manager()
@@ -91,17 +94,6 @@ class PlayTime(models.Model):
     objects = models.Manager()
 
 
-class Bogof(models.Model):
-    id = models.AutoField(primary_key=True)
-    play_id = models.ForeignKey(Play, on_delete=models.CASCADE)
-    bogof = models.BooleanField(default=False)
-    offer_day = models.DateField(null=True, blank=True)
-    number_of_tickets = models.CharField(max_length=100)
-    promo_code = models.CharField(max_length=100)
-    added_on = models.DateTimeField(auto_now_add=True)
-    objects = models.Manager()
-
-
 class OtherOffers(models.Model):
     id = models.AutoField(primary_key=True)
     play_id = models.ForeignKey(Play, on_delete=models.CASCADE)
@@ -122,9 +114,11 @@ class PurchasedTicketManager(models.Manager):
 class Ticket(models.Model):
     id = models.AutoField(primary_key=True)
     seat_numbers = models.CharField(max_length=100)
-    ticket_type = models.CharField(max_length=50)
+    ticket_type = models.CharField(max_length=500, blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     email = models.EmailField()
+    play_date = models.DateField(null=True, blank=True)
+    play_time = models.CharField(max_length=255, null=True, blank=True)
     qr_code = models.ImageField(upload_to='qr_codes/')
     user = models.ForeignKey(UserAccount, on_delete=models.CASCADE, default=None)
     play_id = models.ForeignKey(Play, on_delete=models.CASCADE, default=None)
@@ -150,8 +144,8 @@ class Payment(models.Model):
     msisdn = models.CharField(max_length=255)
     msisdn_idnum = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE)
-    user = models.ForeignKey(UserAccount, on_delete=models.CASCADE,default=None)
+    ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL, null=True, blank=True)
+    user = models.ForeignKey(UserAccount, on_delete=models.SET_NULL, null=True, blank=True, default=None)
     added_on = models.DateTimeField(auto_now_add=True)
     objects = models.Manager()
 
@@ -162,10 +156,11 @@ class Payment(models.Model):
 class Video(models.Model):
     id = models.AutoField(primary_key=True)
     title = models.CharField(max_length=255)
+    duration = models.CharField(max_length=255)
     synopsis = models.TextField()
-    video = models.FileField(upload_to='videos/')
-    trailer = models.FileField(upload_to='trailers/')
-    video_poster = models.ImageField(upload_to='video_poster/')
+    video = models.FileField(upload_to='videos/', null=True, blank=True)
+    trailer = models.FileField(upload_to='trailers/', null=True, blank=True)
+    video_poster = models.ImageField(upload_to='video_poster/', null=True, blank=True)
     added_on = models.DateTimeField(auto_now_add=True)
     objects = models.Manager()
 
@@ -204,8 +199,8 @@ class VideoPayments(models.Model):
     msisdn = models.CharField(max_length=255)
     msisdn_idnum = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    video = models.ForeignKey(Video, on_delete=models.CASCADE)
-    user = models.ForeignKey(UserAccount, on_delete=models.CASCADE,default=None)
+    video = models.ForeignKey(Video, on_delete=models.SET_NULL, null=True, blank=True)
+    user = models.ForeignKey(UserAccount, on_delete=models.SET_NULL, null=True, blank=True, default=None)
     added_on = models.DateTimeField(auto_now_add=True)
     objects = models.Manager()
 
@@ -230,4 +225,20 @@ class ViewHistory(models.Model):
     added_on = models.DateTimeField(auto_now_add=True)
     objects = models.Manager()
 
+
+class Seat(models.Model):
+    play_time = models.ForeignKey(PlayTime, on_delete=models.CASCADE)
+    play_date = models.DateField()
+    seat_number = models.CharField(max_length=10)  # e.g., "A1"
+    wing = models.CharField(max_length=50)  # New field to represent seat's wing (Left, Center, Right)
+    time_slot = models.CharField(max_length=255)  # e.g., "time1", "time2", "time3"
+    is_booked = models.BooleanField(default=False)
+    objects = models.Manager()
+
+    class Meta:
+        # Ensure uniqueness per play_time, seat_number, wing, and potentially row if added
+        unique_together = ('play_time', 'seat_number', 'wing','time_slot')
+
+    def __str__(self):
+        return f"{self.play_time.play_id.title} - {self.wing} Wing - {self.time_slot} - Seat {self.seat_number} - {'Booked' if self.is_booked else 'Available'}"
 

@@ -9,7 +9,7 @@ from django.conf.urls.static import static
 
 from heartstringApp import views
 from heartstringApp.views import SuperUserRegistrationView, UserAccountUpdateView, UserAccountDeleteView, \
-    MyPlayListView, MyStreamListView
+    MyPlayListView, MyStreamListView, AvailableSeatsView
 
 # from heartstringProject import settings
 
@@ -19,10 +19,11 @@ router.register("payments", views.PaymentViewSet, basename="payments")
 router.register("video-payments", views.VideoPaymentViewSet, basename="video-payments")
 router.register("plays", views.PlayViewSet, basename="plays")
 router.register("videos", views.VideoViewSet, basename="videos")
+router.register("seats", views.SeatViewSet, basename="seats")
 router.register("play_casts", views.PlayCastViewSet, basename="play_casts")
 router.register("video_casts", views.VideoCastViewSet, basename="video_casts")
-router.register("offers", views.OffersVIewSet, basename="offers")
 router.register("my-stream", views.MyStreamListView, basename="my-stream")
+router.register("watch_history", views.ViewHistoryViewSet, basename="watch_history")
 router.register("home_api", views.HomeApiViewSet, basename="home_api")
 
 urlpatterns = [
@@ -34,6 +35,8 @@ urlpatterns = [
     path('auth/superuser/', SuperUserRegistrationView.as_view({'post': 'create_superuser'}), name='superuser-registration'),
     path('api/payments/initiate_payment/', views.PaymentViewSet.as_view({'post': 'initiate_payment'}), name='initiate_payment'),
     path('api/video-payments/initiate_payment/', views.VideoPaymentViewSet.as_view({'post': 'initiate_payment'}), name='initiate_payment'),
+    path('api/video-payments/initiate_airtel_payment/', views.VideoPaymentViewSet.as_view({'post': 'initiate_airtel_payment'}), name='initiate_airtel_payment'),
+    path('api/available-seats/<int:play_time_id>/', AvailableSeatsView.as_view(), name='available-seats'),
     path('api/update-user/', UserAccountUpdateView.as_view(), name='update-user'),
     path('api/delete-user/<int:pk>/', UserAccountDeleteView.as_view(), name='user-delete'),
     path('api/my-plays/', MyPlayListView.as_view(), name='my-plays'),

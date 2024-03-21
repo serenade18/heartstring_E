@@ -15,18 +15,21 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from djoser.views import UserViewSet
 from rest_framework import viewsets, status, generics
+from rest_framework.exceptions import ValidationError, NotFound
 from rest_framework.decorators import action
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from heartstringApp import serializers
-from heartstringApp.models import Ticket, Payment, Play, Video, PlayCast, Bogof, OtherOffers, PlayTime, \
-    VideoCast, VideoAvailability, UserAccount, VideoPayments
+from heartstringApp.models import Ticket, Payment, Play, Video, PlayCast, OtherOffers, PlayTime, \
+    VideoCast, VideoAvailability, UserAccount, VideoPayments, Seat, ViewHistory
 from heartstringApp.serializers import TicketsSerializer, PaymentSerializer, PlaySerializer, \
-    PlayCastSerializer, OfferSerializer, VideoSerializer, VideoCastSerializer, VideoPaymentSerializer, \
+    PlayCastSerializer, VideoSerializer, VideoCastSerializer, VideoPaymentSerializer, \
     VideoAvailabilitySerializer, OtherOfferSerializer, PlayDateSerializer, UserAccountSerializer, \
-    MyPlaySerializer, MyStreamSerializer
+    MyPlaySerializer, MyStreamSerializer, SeatSerializer, ViewHistorySerializer
 
 from django.contrib.auth import get_user_model
 
@@ -112,6 +115,106 @@ class UserAccountDeleteView(generics.DestroyAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class AvailableSeatsView(APIView):
+    """
+    API endpoint that lists available seats for a specific play time.
+    """
+
+    def get(self, request, play_time_id, format=None):
+        try:
+            play_time = PlayTime.objects.get(id=play_time_id)
+            available_seats = Seat.objects.filter(play_time=play_time, is_booked=False)
+            serializer = SeatSerializer(available_seats, many=True)
+            return Response(serializer.data)
+        except PlayTime.DoesNotExist:
+            return Response({'error': 'PlayTime not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class SeatViewSet(viewsets.ViewSet):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [AllowAny]  # Adjust as needed for your auth requirements
+
+    def list(self, request):
+        """
+        Filter seats by date and time slot.
+        """
+        play_date = request.query_params.get('play_date')
+        time_slot = request.query_params.get('time_slot')
+
+        try:
+            seats = Seat.objects.filter(play_date=play_date, time_slot=time_slot)
+            if not seats.exists():
+                raise NotFound(detail="No seats found for the provided date and time slot.")
+        except ValueError:
+            raise ValidationError(detail="Invalid 'date' or 'time_slot' provided.")
+
+        serializer = SeatSerializer(seats, many=True)
+        return Response({"error": False, "message": "All Seats List Data", "data": serializer.data})
+
+    @action(detail=False, methods=['post'], url_path='book')
+    def book_seats(self, request):
+        """
+        Book multiple seats by marking them as booked. Expects a list of seat IDs in the request body.
+        """
+        seat_ids = request.data.get('seat_ids')
+
+        if not seat_ids:
+            return Response({'error': True, 'message': 'No seat IDs provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        booked_seats = []
+        not_found_seats = []
+        already_booked_seats = []
+
+        for seat_id in seat_ids:
+            try:
+                seat = Seat.objects.get(pk=seat_id)
+                if seat.is_booked:
+                    already_booked_seats.append(seat_id)
+                else:
+                    seat.is_booked = True
+                    seat.save()
+                    booked_seats.append(seat_id)
+            except Seat.DoesNotExist:
+                not_found_seats.append(seat_id)
+
+        message = "Seats booking status updated."
+        if not_found_seats:
+            message += f" Not found seats: {not_found_seats}."
+        if already_booked_seats:
+            message += f" Already booked seats: {already_booked_seats}."
+
+        return Response({
+            'error': False,
+            'message': message,
+            'booked_seats': booked_seats,
+            'already_booked_seats': already_booked_seats,
+            'not_found_seats': not_found_seats
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='available')
+    def available_seats(self, request):
+        """
+        List all available seats, optionally filtered by date and time slot.
+        """
+        date = request.query_params.get('date')
+        time_slot = request.query_params.get('time_slot')
+        queryset = Seat.objects.filter(is_booked=False)
+
+        if date and time_slot:
+            try:
+                queryset = queryset.filter(play_time__date=date, play_time__time_slot=time_slot)
+                if not queryset.exists():
+                    raise NotFound(detail="No available seats found for the provided date and time slot.")
+            except ValueError:
+                raise ValidationError(detail="Invalid 'date' or 'time_slot' provided.")
+
+        if not queryset.exists():
+            return Response({'error': True, 'message': 'No available seats.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = SeatSerializer(queryset, many=True)
+        return Response({"error": False, "message": "All Available Seats", "data": serializer.data})
+
+
 def generate_qr_code(data):
     qr = qrcode.QRCode(
         version=1,
@@ -122,7 +225,7 @@ def generate_qr_code(data):
     qr.add_data(data)
     qr.make(fit=True)
 
-    img = qr.make_image(fill_color="black", back_color="white")
+    img = qr.make_image(fill_color="white", back_color="transparent")
     buffer = BytesIO()
     img.save(buffer, format="PNG")
     qr_code_image = buffer.getvalue()
@@ -136,9 +239,9 @@ class TicketViewSet(viewsets.ViewSet):
 
     def list(self, request):
         if request.user.is_staff:  # Check if the user is an admin
-            tickets = Ticket.objects.all()  # Retrieve all tickets in the database
+            tickets = Ticket.objects.all().order_by('-id')  # Retrieve all tickets in the database
         else:
-            tickets = Ticket.objects.filter(user=request.user)  # Filter tickets for regular users
+            tickets = Ticket.objects.filter(user=request.user).order_by('-id')  # Filter tickets for regular users
 
         serializer = TicketsSerializer(tickets, many=True, context={"request": request})
 
@@ -157,9 +260,9 @@ class TicketViewSet(viewsets.ViewSet):
 
             # Save the ticket with the generated ticket number
             ticket = serializer.save(user=request.user, ticket_number=ticket_number)
-            self.generate_default_qr_code(ticket)
 
-            dict_response = {"error": False, "message": "Ticket Bought Successfully"}
+            # Include only the ticket ID in the response
+            dict_response = {"error": False, "message": "Ticket created Successfully", "ticket_id": ticket.id}
         except Exception as e:
             dict_response = {"error": True, "message": f"Error During Saving Ticket Data: {str(e)}"}
 
@@ -182,6 +285,17 @@ class TicketViewSet(viewsets.ViewSet):
 
         serializer_data = serializer.data
         dict_response = {"error": False, "message": "Single data fetch", "data": serializer_data}
+
+        return Response(dict_response)
+
+    def destroy(self, request, pk=None):
+        try:
+            queryset = Ticket.objects.all()
+            tickets = get_object_or_404(queryset, pk=pk)
+            tickets.delete()
+            dict_response = {"error": False, "message": "Ticket Deleted Successfully"}
+        except:
+            dict_response = {"error": True, "message": "Ticket Not Deleted Successfully"}
 
         return Response(dict_response)
 
@@ -210,6 +324,7 @@ class PaymentViewSet(viewsets.ViewSet):
         # Replace 'ticket_id' with the actual ticket ID you want to associate with the payment
         ticket_id = request.data.get('ticket_id')
         amount = request.data.get('amount')
+        user_phone = request.data.get('phone')
 
         try:
             # Retrieve the Ticket object based on the provided ID
@@ -218,7 +333,7 @@ class PaymentViewSet(viewsets.ViewSet):
             return Response({"error": True, "message": "Ticket not found"}, status=status.HTTP_404_NOT_FOUND)
 
         # Retrieve user's phone from the authenticated user
-        user_phone = request.user.phone
+        user_email = request.user.email
         # OEgn$6shMB9( :merchant password
         # Define your transaction parameters here
         live = "1"
@@ -226,7 +341,7 @@ class PaymentViewSet(viewsets.ViewSet):
         inv = ticket.ticket_number  # Use the retrieved Ticket object to get the ticket number
         # amount = str(ticket.price)  # Use the retrieved Ticket object to get the price
         tel = user_phone
-        eml = ticket.email
+        eml = user_email
         vid = "hstring"  # Replace with your Vendor ID
         curr = "KES"
         p1 = ""
@@ -458,7 +573,7 @@ class PlayViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
 
     def list(self, request):
-        plays = Play.objects.all()
+        plays = Play.objects.all().order_by('-id')
         serializer = PlaySerializer(plays, many=True, context={"request": request})
 
         response_dict = {"error": False, "message": "All Plays List Data", "data": serializer.data}
@@ -472,11 +587,6 @@ class PlayViewSet(viewsets.ViewSet):
                             status=status.HTTP_401_UNAUTHORIZED)
 
         try:
-            # Parse JSON data from strings to Python objects
-            play_cast_list = json.loads(request.data.get("play_cast_list", "[]"))
-            play_dateTime = json.loads(request.data.get("play_dateTime", "[]"))
-            other_offers = json.loads(request.data.get("other_offers", "[]"))
-
             serializer = PlaySerializer(data=request.data, context={"request": request})
             if serializer.is_valid():
                 play_instance = serializer.save()
@@ -484,55 +594,69 @@ class PlayViewSet(viewsets.ViewSet):
                 play_id = play_instance.id
 
                 # Access saved serializer and save play cast
-                play_cast_data_list = []
-                for data in play_cast_list:
-                    play_cast_data = {
-                        "play_id": play_id,
-                        "image": data.get("image"),
-                        "real_name": data.get("real_name"),
-                        "cast_name": data.get("cast_name"),
-                    }
-                    play_cast_data_list.append(play_cast_data)
+                play_cast_list = []
+                play_cast_data_list = request.data.get("play_casts", [])
+                if not play_cast_data_list:
+                    # Handle the indexed format
+                    index = 0
+                    while f"play_casts[{index}][real_name]" in request.data:
+                        play_cast_data = {
+                            "play_id": play_id,
+                            "image": request.data.get(f"play_casts[{index}][image]"),
+                            "real_name": request.data.get(f"play_casts[{index}][real_name]"),
+                            "cast_name": request.data.get(f"play_casts[{index}][cast_name]"),
+                        }
+                        play_cast_list.append(play_cast_data)
+                        index += 1
+                else:
+                    # Handle the non-indexed format
+                    for data in play_cast_data_list:
+                        play_cast_data = {
+                            "play_id": play_id,
+                            "image": data.get("image"),
+                            "real_name": data.get("real_name"),
+                            "cast_name": data.get("cast_name"),
+                        }
+                        play_cast_list.append(play_cast_data)
+                print("play Cast List:", play_cast_list)
 
                 # Save play cast data to table
-                serializer1 = PlayCastSerializer(data=play_cast_data_list, many=True, context={"request": request})
+                serializer1 = PlayCastSerializer(data=play_cast_list, many=True, context={"request": request})
                 if serializer1.is_valid():
                     serializer1.save()
                 else:
                     print("Play Cast Serializer Validation Errors:", serializer1.errors)
 
-                # Access saved serializer and save play offers
-                play_offers_list = []
-                # for data in request.data.getlist("play_offers"):
-                for data in json.loads(request.data.get("play_offers", "[]")):
-                    play_offer_data = {
-                        "play_id": play_id,
-                        "bogof": data.get("bogof"),
-                        "offer_day": data.get("offer_day"),
-                        "number_of_tickets": data.get("number_of_tickets"),
-                        "promo_code": data.get("promo_code"),
-                    }
-                    play_offers_list.append(play_offer_data)
-
-                # Save play offer data to table
-                serializer2 = OfferSerializer(data=play_offers_list, many=True, context={"request": request})
-                if serializer2.is_valid():
-                    serializer2.save()
-                else:
-                    print("Offer Serializer Validation Errors:", serializer2.errors)
-
                 # Access saved serializer and save other offers
                 other_offers_list = []
-                for data in other_offers:
-                    other_offer_data = {
-                        "play_id": play_id,
-                        "offers_name": data.get("offers_name"),
-                        "offer_day": data.get("offer_day"),
-                        "promo_code": data.get("promo_code"),
-                        "percentage": data.get("percentage"),
-                        "number_of_tickets": data.get("number_of_tickets"),
-                    }
-                    other_offers_list.append(other_offer_data)
+                other_offers_data_list = request.data.get('other_offers', [])
+                if not other_offers_data_list:
+                    # Handle the indexed format
+                    index = 0
+                    while f"other_offers[{index}][offers_name]" in request.data:
+                        other_offers_data = {
+                            "play_id": play_id,
+                            "offers_name": request.data.get(f"other_offers[{index}][offers_name]"),
+                            "offer_day": request.data.get(f"other_offers[{index}][offer_day]"),
+                            "promo_code": request.data.get(f"other_offers[{index}][promo_code]"),
+                            "percentage": request.data.get(f"other_offers[{index}][percentage]"),
+                            "number_of_tickets": request.data.get(f"other_offers[{index}][number_of_tickets]"),
+                        }
+                        other_offers_list.append(other_offers_data)
+                        index += 1
+                else:
+                    for data in other_offers_data_list:
+                        other_offers_data = {
+                            "play_id": play_id,
+                            "offers_name": data.get("offers_name"),
+                            "offer_day": data.get("offer_day"),
+                            "promo_code": data.get("promo_code"),
+                            "percentage": data.get("percentage"),
+                            "number_of_tickets": data.get("number_of_tickets"),
+                        }
+                        other_offers_list.append(other_offers_data)
+
+                print("other offers List:", other_offers_list)
 
                 # Save other offers to table
                 serializer3 = OtherOfferSerializer(data=other_offers_list, many=True, context={"request": request})
@@ -543,15 +667,32 @@ class PlayViewSet(viewsets.ViewSet):
 
                 # Access saved serializer and save play date
                 play_date_list = []
-                for data in play_dateTime:
-                    play_date_data = {
-                        "play_id": play_id,
-                        "play_date": data.get("date"),
-                        "time1": data.get("time1"),
-                        "time2": data.get("time2"),
-                        "time3": data.get("time3"),
-                    }
-                    play_date_list.append(play_date_data)
+                play_date_data_list = request.data.get("play_dates", [])
+                if not play_date_data_list:
+                    # Handle the indexed format
+                    index = 0
+                    while f"play_dates[{index}][play_date]" in request.data:
+                        play_dates_data = {
+                            "play_id": play_id,
+                            "play_date": request.data.get(f"play_dates[{index}][play_date]"),
+                            "time1": request.data.get(f"play_dates[{index}][time1]"),
+                            "time2": request.data.get(f"play_dates[{index}][time2]"),
+                            "time3": request.data.get(f"play_dates[{index}][time3]"),
+                        }
+                        play_date_list.append(play_dates_data)
+                        index += 1
+                else:
+                    # Handle the non-indexed format
+                    for data in play_date_data_list:
+                        play_dates_data = {
+                            "play_id": play_id,
+                            "play_date": data.get("date"),
+                            "time1": data.get("time1"),
+                            "time2": data.get("time2"),
+                            "time3": data.get("time3"),
+                        }
+                        play_date_list.append(play_dates_data)
+                print("play dates List:", play_date_list)
 
                 # Save play dates to table
                 serializer4 = PlayDateSerializer(data=play_date_list, many=True, context={"request": request})
@@ -559,6 +700,37 @@ class PlayViewSet(viewsets.ViewSet):
                     serializer4.save()
                 else:
                     print("Play Date Serializer Validation Errors:", serializer4.errors)
+
+                # Dynamic seat creation logic
+                seatLayout = [
+                    {"wing": "Left",
+                     "seats": {"A": 3, "B": 4, "C": 5, "D": 6, "E": 7, "F": 8, "G": 0, "H": 0, "I": 0}},
+                    {"wing": "Center",
+                     "seats": {"A": 14, "B": 15, "C": 14, "D": 15, "E": 14, "F": 15, "G": 14, "H": 15, "I": 14}},
+                    {"wing": "Right",
+                     "seats": {"A": 3, "B": 4, "C": 5, "D": 6, "E": 7, "F": 8, "G": 0, "H": 0, "I": 0}},
+                ]
+
+                playTimes = PlayTime.objects.filter(play_id=play_instance)
+
+                for playTime in playTimes:
+                    for section in seatLayout:
+                        wing = section["wing"]
+                        for row, seatCount in section["seats"].items():
+                            # For each PlayTime, create seats for each time slot
+                            time_slots = [playTime.time1, playTime.time2, playTime.time3]
+                            play_date = playTime.play_date
+                            for time_slot in filter(None, time_slots):  # filter(None, ...) removes empty slots
+                                for seatNumber in range(1, seatCount + 1):
+                                    seat_id = f"{wing}-{row}{seatNumber}"
+                                    Seat.objects.create(
+                                        play_time=playTime,
+                                        seat_number=seat_id,
+                                        wing=wing,
+                                        time_slot=time_slot,
+                                        is_booked=False,
+                                        play_date=play_date
+                                    )
 
                 dict_response = {"error": False, "message": "Play added successfully"}
             else:
@@ -597,11 +769,6 @@ class PlayViewSet(viewsets.ViewSet):
         play_casts = PlayCast.objects.filter(play_id=serializer_data["id"])
         play_casts_serializer = PlayCastSerializer(play_casts, many=True)
         serializer_data["play_casts"] = play_casts_serializer.data
-
-        # Access play_offers associated with the current play
-        play_offers = Bogof.objects.filter(play_id=serializer_data["id"])
-        play_offers_serializer = OfferSerializer(play_offers, many=True)
-        serializer_data["play_offers"] = play_offers_serializer.data
 
         # Access other_offers associated with the current play
         other_offers = OtherOffers.objects.filter(play_id=serializer_data["id"])
@@ -705,68 +872,6 @@ class PlayCastViewSet(viewsets.ViewSet):
         queryset = PlayCast.objects.all()
         play_cast = get_object_or_404(queryset, pk=pk)
         play_cast.delete()
-        return Response({"error": False, "message": "Payment Removed"})
-
-
-class OffersVIewSet(viewsets.ViewSet):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def list(self, request):
-        # play_cast = PlayCast.objects.filter(user=request.user)
-        offers = Bogof.objects.all()
-        serializer = OfferSerializer(offers, many=True, context={"request": request})
-
-        response_dict = {"error": False, "message": "All Offers List Data", "data": serializer.data}
-
-        return Response(response_dict)
-
-    def create(self, request):
-        # Check if the user is an admin
-        if not request.user.is_staff:
-            return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
-                            status=status.HTTP_401_UNAUTHORIZED)
-        try:
-            serializer = OfferSerializer(data=request.data, context={"request": request})
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-            dict_response = {"error": False, "message": "Offer Added Successfully"}
-        except:
-            dict_response = {"error": True, "message": "Error performing task"}
-
-        return Response(dict_response)
-
-    def retrieve(self, request, pk=None):
-        queryset = Bogof.objects.all()
-        offers = get_object_or_404(queryset, pk=pk)
-        serializer = OfferSerializer(offers, context={"request": request})
-        return Response({"error": False, "message": "Single Data Fetch", "data": serializer.data})
-
-    def update(self, request, pk=None):
-        # Check if the user is an admin
-        if not request.user.is_staff:
-            return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
-                            status=status.HTTP_401_UNAUTHORIZED)
-        try:
-            queryset = Bogof.objects.all()
-            offers = get_object_or_404(queryset, pk=pk)
-            serializer = OfferSerializer(offers, data=request.data, context={"request": request})
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-            dict_response = {"error": False, "message": "Payment Re-Processed Successfully"}
-        except:
-            dict_response = {"error": True, "message": "An Error Occurred"}
-
-        return Response(dict_response)
-
-    def destroy(self, request, pk=None):
-        if not request.user.is_staff:
-            return Response({"error": True, "message": "User does not have enough permission to perform this task"},\
-                            status=status.HTTP_401_UNAUTHORIZED)
-
-        queryset = Bogof.objects.all()
-        offers = get_object_or_404(queryset, pk=pk)
-        offers.delete()
         return Response({"error": False, "message": "Payment Removed"})
 
 
@@ -891,11 +996,15 @@ class VideoViewSet(viewsets.ViewSet):
             serializer = VideoSerializer(video, data=request.data, context={"request": request})
             serializer.is_valid(raise_exception=True)
             serializer.save()
-            dict_response = {"error": False, "message": "Video Updated Successfully"}
-        except:
-            dict_response = {"error": True, "message": "Video Not Updated Successfully"}
 
-        return Response(dict_response)
+            dict_response = {"error": False, "message": "Video Updated Successfully"}
+        except ValidationError as e:
+            dict_response = {"error": True, "message": "Validation Error", "details": str(e)}
+        except Exception as e:
+            dict_response = {"error": True, "message": "An Error Occurred", "details": str(e)}
+
+        return Response(dict_response,
+                        status=status.HTTP_400_BAD_REQUEST if dict_response['error'] else status.HTTP_201_CREATED)
 
     def destroy(self, request, pk=None):
         # Check if the user is an admin
@@ -1003,67 +1112,52 @@ class MyStreamListView(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        # Get the currently authenticated user
         user = request.user
-
-        # Retrieve video payments made by the user
         video_payments = VideoPayments.objects.filter(user=user)
-
-        # Initialize a list to store active videos
         active_videos = []
 
         for video_payment in video_payments:
             video = video_payment.video
-            pricing_tiers = VideoAvailability.objects.filter(video_id=video).first()
+            # Ensure video is not None before proceeding
+            if video is not None:
+                pricing_tiers = VideoAvailability.objects.filter(video_id=video).first()
 
-            # Check if the payment amount corresponds to an active video
-            if (
-                    video_payment.amount == int(pricing_tiers.three_price)
-                    or video_payment.amount == int(pricing_tiers.seven_price)
-                    or video_payment.amount == int(pricing_tiers.fourteen_price)
-            ):
-                # Calculate the remaining days based on the payment's added_on date
-                current_datetime = timezone.now()
-                days_difference = (current_datetime - video_payment.added_on).days
+                # Check if pricing tiers exist for this video
+                if pricing_tiers:
+                    if video_payment.amount in [int(pricing_tiers.three_price), int(pricing_tiers.seven_price),
+                                                int(pricing_tiers.fourteen_price)]:
+                        current_datetime = timezone.now()
+                        days_difference = (current_datetime - video_payment.added_on).days
 
-                remaining_access_time = None
-                if video_payment.amount == int(pricing_tiers.three_price):
-                    remaining_access_time = 3 - days_difference  # Access for 3 days
-                elif video_payment.amount == int(pricing_tiers.seven_price):
-                    remaining_access_time = 7 - days_difference  # Access for 7 days
-                elif video_payment.amount == int(pricing_tiers.fourteen_price):
-                    remaining_access_time = 14 - days_difference  # Access for 14 days
+                        remaining_access_time = None
+                        if video_payment.amount == int(pricing_tiers.three_price):
+                            remaining_access_time = 3 - days_difference
+                        elif video_payment.amount == int(pricing_tiers.seven_price):
+                            remaining_access_time = 7 - days_difference
+                        elif video_payment.amount == int(pricing_tiers.fourteen_price):
+                            remaining_access_time = 14 - days_difference
 
-                if remaining_access_time <= 0:
-                    # Access has expired, skip this video
-                    continue
-
-                # Create a dictionary for the active video
-                active_video_data = {
-                    'id': video.id,
-                    'title': video.title,
-                    'synopsis': video.synopsis,
-                    'video': video.video,
-                    'trailer': video.trailer,
-                    'video_poster': video.video_poster,
-                    'remaining_access_time': remaining_access_time,
-                    'added_on': video.added_on,
-                }
-
-                active_videos.append(active_video_data)
+                        if remaining_access_time > 0:
+                            active_video_data = {
+                                'id': video.id,
+                                'title': video.title,
+                                'synopsis': video.synopsis,
+                                'video': video.video,
+                                'duration': video.duration,
+                                'trailer': video.trailer,
+                                'video_poster': video.video_poster,
+                                'remaining_access_time': remaining_access_time,
+                                'added_on': video.added_on,
+                            }
+                            active_videos.append(active_video_data)
+                else:
+                    # Pricing tiers do not exist for this video; you might want to log this or handle it appropriately
+                    print(f"No pricing tiers found for video {video.id if video else 'Unknown'}")
             else:
-                # Add detailed error logging to help diagnose issues
-                print(f"Invalid payment amount for video {video.id}: {video_payment.amount}")
-                print(
-                    f"Pricing tiers: 3: {pricing_tiers.three_price}, 7: {pricing_tiers.seven_price}, 14: {pricing_tiers.fourteen_price}")
+                # Handle the case where video is None
+                print(f"VideoPayments instance with ID {video_payment.id} does not have an associated video.")
 
-        if not active_videos:
-            # No active videos found, return an error message
-            return Response(
-                {"error": True, "message": "No active videos. Please rent a video to play."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+        # No need to return an error if no active videos are found
         # Serialize the active videos and return the response
         serializer = MyStreamSerializer(active_videos, many=True, context={"request": request})
 
@@ -1073,7 +1167,7 @@ class MyStreamListView(viewsets.ViewSet):
                                               [video['remaining_access_time'] for video in active_videos]):
             video_data['remaining_access_time'] = remaining_time
 
-        response_dict = {"error": False, "message": "Active Videos List Data", "data": data_with_remaining_access_time}
+        response_dict = {"error": False, "message": "Active Videos List Data", "data": serializer.data}
         return Response(response_dict, status=status.HTTP_200_OK)
 
     def retrieve(self, request, pk=None):
@@ -1164,16 +1258,25 @@ class VideoPaymentViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        videopayment = VideoPayments.objects.all()
-        serializer = VideoPaymentSerializer(videopayment, many=True, context={"request": request})
-        response_dict = {"error": False, "message": "All Payments List Data", "data": serializer.data}
+        # Check if the user is a staff member
+        is_staff = request.user.is_staff
+
+        if is_staff:
+            # User is a staff member, so they can access all payments
+            videopayments = VideoPayments.objects.all()
+        else:
+            # User is not a staff member, so they can only access their payments
+            videopayments = VideoPayments.objects.filter(user=request.user)
+
+        serializer = VideoPaymentSerializer(videopayments, many=True, context={"request": request})
+        response_dict = {"error": False, "message": "Payments List Data", "data": serializer.data}
         return Response(response_dict)
 
     @action(detail=False, methods=["post"])
-    def initiate_payment(self, request):
-        # Replace 'video_id' with the actual ticket ID you want to associate with the payment
+    def initiate_airtel_payment(self, request):
         video_id = request.data.get('video_id')
         amount = request.data.get('amount')
+        user_phone = request.data.get('phone')
 
         try:
             # Retrieve the Video object based on the provided ID
@@ -1182,7 +1285,6 @@ class VideoPaymentViewSet(viewsets.ViewSet):
             return Response({"error": True, "message": "Video not found"}, status=status.HTTP_404_NOT_FOUND)
 
         # Retrieve user's phone from the authenticated user
-        user_phone = request.user.phone
         user_email = request.user.email
         # OEgn$6shMB9( :merchant password
         # Define your transaction parameters here
@@ -1260,10 +1362,8 @@ class VideoPaymentViewSet(viewsets.ViewSet):
             }
 
             # Make a POST request to your STK PUSH endpoint
-            response_stk = requests.post('https://apis.ipayafrica.com/payments/v2/transact/push/mpesa',
+            response_stk = requests.post('https://apis.ipayafrica.com/payments/v2/transact/push/airtel',
                                          json=request_data_stk)
-            # print(request_data_stk)
-            # print(response_stk.text)
 
             if response_stk.status_code == 200:
                 response_data_stk = response_stk.json()
@@ -1297,8 +1397,7 @@ class VideoPaymentViewSet(viewsets.ViewSet):
 
                         response_callback = requests.post(
                             'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
-                            json=request_data_callback)
-                        # print(response_callback.text)
+                            json=request_data_callback)\
 
                         if response_callback.status_code == 400:
                             response_data_callback = response_callback.json()
@@ -1315,7 +1414,7 @@ class VideoPaymentViewSet(viewsets.ViewSet):
                             }
 
                             # Define the maximum number of callback retries
-                            max_callback_retries = 7
+                            max_callback_retries = 8
                             callback_retries = 0
 
                             while callback_retries < max_callback_retries:
@@ -1378,6 +1477,321 @@ class VideoPaymentViewSet(viewsets.ViewSet):
                     return Response({"error": True, "message": "STK PUSH request failed with status code: " + str(
                         response_stk.status_code)},
                                     status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["post"])
+    def initiate_payment(self, request):
+        video_id = request.data.get('video_id')
+        amount = request.data.get('amount')
+        user_phone = request.data.get('phone')
+
+        try:
+            # Retrieve the Video object based on the provided ID
+            video = Video.objects.get(pk=video_id)
+        except Video.DoesNotExist:
+            return Response({"error": True, "message": "Video not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Retrieve user's phone from the authenticated user
+        user_email = request.user.email
+        # OEgn$6shMB9( :merchant password
+        # Define your transaction parameters here
+        live = "1"
+        oid = f"{int(time.time())}-{uuid.uuid4()}"  # Use the retrieved Video object to get the ID
+        inv = str(video.id)  # Use the retrieved Video object to get the ticket number
+        tel = user_phone
+        eml = user_email
+        vid = "hstring"  # Replace with your Vendor ID
+        curr = "KES"
+        p1 = ""
+        p2 = ""
+        p3 = ""
+        p4 = ""
+        cst = "0"
+        crl = "1"
+        autopay = "1"
+        cbk = "http://heartstringsentertainment.co.ke"  # Replace with your callback URL
+
+        data_string = live + oid + inv + amount + tel + eml + vid + curr + p1 + p2 + p3 + p4 + cst + cbk
+
+        hash_key = "V5BHqdsbRBSc2#9rkky7kC2$NQ%fEEg8"  # Replace with your secret key
+
+        # Convert hashKey and dataString to bytes
+        hash_key_bytes = hash_key.encode()
+        data_string_bytes = data_string.encode()
+
+        # Create an HMAC-SHA256 hasher
+        hasher = hmac.new(hash_key_bytes, data_string_bytes, hashlib.sha256)
+
+        # Get the generated hash in hexadecimal format
+        generated_hash = hasher.hexdigest()
+
+        # Include the 'hash' parameter in your request data
+        request_data = {
+            'live': live,
+            'oid': oid,
+            'inv': inv,
+            'amount': amount,
+            'tel': tel,
+            'eml': eml,
+            'vid': vid,
+            'curr': curr,
+            'p1': p1,
+            'p2': p2,
+            'p3': p3,
+            'p4': p4,
+            'cst': cst,
+            'crl': crl,
+            'hash': generated_hash,  # Include the generated hash
+            'autopay': autopay,
+            'cbk': cbk
+        }
+
+        # Make a POST request to your payment gateway
+        response = requests.post('https://apis.ipayafrica.com/payments/v2/transact', data=request_data)
+
+        # Try to extract the SID from the response
+        sid = response.json().get('data', {}).get('sid')
+
+        if sid:
+            # Now, use the same method to hash the phone, sid, and vid
+            data_string_stk = user_phone + vid + sid
+            hasher_stk = hmac.new(hash_key_bytes, data_string_stk.encode(), hashlib.sha256)
+            generated_hash_stk = hasher_stk.hexdigest()
+
+            # Include the 'hash' parameter in your request data for STK PUSH
+            request_data_stk = {
+                'phone': user_phone,
+                'sid': sid,
+                'vid': vid,
+                'hash': generated_hash_stk,
+            }
+
+            # Make a POST request to your STK PUSH endpoint
+            response_stk = requests.post('https://apis.ipayafrica.com/payments/v2/transact/push/mpesa',
+                                         json=request_data_stk)
+
+            if response_stk.status_code == 200:
+                response_data_stk = response_stk.json()
+                header_status_stk = response_data_stk.get('header_status')
+                response_status_stk = response_data_stk.get('text')
+                if header_status_stk == 200:
+                    # STK PUSH request initiated successfully
+                    # Proceed to handle the callback action
+
+                    if sid:
+                        # 2. Calculate the hash for the callback
+                        data_string_callback = vid + sid  # Exclude the phone number
+
+                        # Convert hashKey and dataString to bytes
+                        hash_key_bytes = hash_key.encode()
+                        data_string_bytes = data_string_callback.encode()
+
+                        # Create an HMAC-SHA256 hasher for the callback
+                        hasher_callback = hmac.new(hash_key_bytes, data_string_bytes, hashlib.sha256)
+
+                        # Get the generated hash in hexadecimal format for the callback
+                        generated_hash_callback = hasher_callback.hexdigest()
+
+                        # 3. Include the 'hash' parameter in your request data for the callback
+                        request_data_callback = {
+                            'vid': vid,
+                            'sid': sid,
+                            'hash': generated_hash_callback,
+                        }
+
+                        response_callback = requests.post(
+                            'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
+                            json=request_data_callback)
+
+                        if response_callback.status_code == 400:
+                            response_data_callback = response_callback.json()
+
+                            # 5. Extract the hash from the callback response using regular expressions
+                            callback_text = response_data_callback.get('error', [{}])[0].get('text')
+                            callback_hash = re.search(r'hash ([a-fA-F0-9]+)', callback_text).group(1)
+
+                            # 6. Include the extracted hash in your request data for the second callback
+                            request_data_second_callback = {
+                                'vid': vid,
+                                'sid': sid,
+                                'hash': callback_hash,  # Use the extracted hash
+                            }
+
+                            # Define the maximum number of callback retries
+                            max_callback_retries = 8
+                            callback_retries = 0
+
+                            while callback_retries < max_callback_retries:
+                                # 7. Make a second POST request to the callback endpoint to get callback details
+                                response_second_callback = requests.post(
+                                    'https://apis.ipayafrica.com/payments/v2/transact/mobilemoney',
+                                    json=request_data_second_callback
+                                )
+
+                                if response_second_callback.status_code == 200:
+                                    response_data_second_callback = response_second_callback.json()
+                                    # Check if the status in the second callback response indicates completeness
+                                    if response_data_second_callback.get("status") == "aei7p7yrx4ae34":
+                                        # Status is complete, process the second callback response
+
+                                        # Store payment information in your database
+                                        payment = VideoPayments.objects.create(
+                                            ref_number=response_data_second_callback.get('txncd'),
+                                            payment_mode=response_data_second_callback.get('channel'),
+                                            msisdn=response_data_second_callback.get('msisdn_id'),
+                                            msisdn_idnum=response_data_second_callback.get('msisdn_idnum'),
+                                            amount=response_data_second_callback.get('mc'),
+                                            video=video,
+                                            user=request.user,
+                                        )
+
+                                        # Return a response indicating successful payment
+                                        return Response({"error": False, "message": "Payment completed successfully"})
+
+                                    elif response_data_second_callback.get("status") == "bdi6p2yy76etrs":
+                                        # Status is incomplete, increment retry count and wait before retrying
+                                        callback_retries += 1
+                                        sleep(5)  # Wait for 3 seconds before retrying
+
+                                    else:
+                                        # Handle unexpected status, you might want to log this
+                                        return Response({"error": True, "message": "Unexpected callback status"},
+                                                        status=status.HTTP_400_BAD_REQUEST)
+
+                                else:
+                                    # Handle the second callback request error
+                                    return Response({"error": True, "message": "Second Callback request failed"},
+                                                    status=status.HTTP_400_BAD_REQUEST)
+
+                            # If the loop completes without breaking, it means max_callback_retries was reached
+                            return Response({"error": True, "message": "Max retries reached"},
+                                            status=status.HTTP_400_BAD_REQUEST)
+
+                        else:
+                            # Handle first callback error
+                            return Response({"error": True, "message": "First Callback request failed"},
+                                            status=status.HTTP_400_BAD_REQUEST)
+                    else:
+                        return Response(
+                            {"error": True,
+                             "message": "STK PUSH request failed with status: " + str(header_status_stk)},
+                            status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    return Response({"error": True, "message": "STK PUSH request failed with status code: " + str(
+                        response_stk.status_code)},
+                                    status=status.HTTP_400_BAD_REQUEST)
+
+
+class ViewHistoryViewSet(viewsets.ViewSet):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        user = request.user
+        watch_history = ViewHistory.objects.filter(user_id=user.id)
+
+        # Create a list to store the serialized data of each watch history entry
+        watch_history_data = []
+
+        for entry in watch_history:
+            video = entry.video_id
+            video_serializer = VideoSerializer(video)
+
+            # Construct the response data for each watch history entry
+            entry_data = {
+                "id": video.id,
+                "title": video.title,
+                "duration": video.duration,
+                "synopsis": video.synopsis,
+                "video": request.build_absolute_uri(video.video.url),
+                "trailer": request.build_absolute_uri(video.trailer.url),
+                "video_poster": request.build_absolute_uri(video.video_poster.url),
+                "added_on": video.added_on,
+            }
+
+            watch_history_data.append(entry_data)
+
+        response_dict = {"error": False, "message": "User's Watch History", "data": watch_history_data}
+        return Response(response_dict)
+
+    def create(self, request):
+        user = request.user
+        video_id = request.data.get('video_id')
+
+        # Check if the video is already in the user's watch history
+        if ViewHistory.objects.filter(user_id=user.id, video_id=video_id).exists():
+            return Response(
+                {"error": True, "message": "This video is already in the user's watch history"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = ViewHistorySerializer(data=request.data, context={"request": request})
+        if serializer.is_valid():
+            serializer.save(user_id=user.id)
+            return Response(
+                {"error": False, "message": "Video added to watch history successfully"},
+                status=status.HTTP_201_CREATED
+            )
+        else:
+            return Response(
+                {"error": True, "message": "Validation Error", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    def retrieve(self, request, pk=None):
+        user = request.user
+        try:
+            watch_history_entry = ViewHistory.objects.select_related('video_id').get(user_id=user.id, pk=pk)
+        except ViewHistory.DoesNotExist:
+            return Response(
+                {"error": True, "message": "Watch history entry does not exist"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Fetch the associated video details
+        video = watch_history_entry.video_id
+        video_serializer = VideoSerializer(video)
+
+        # Construct the response data with video details at the root level
+        response_data = {
+            "id": video.id,
+            "title": video.title,
+            "duration": video.duration,
+            "synopsis": video.synopsis,
+            "video": request.build_absolute_uri(video.video.url),
+            "trailer": request.build_absolute_uri(video.trailer.url),
+            "video_poster": request.build_absolute_uri(video.video_poster.url),
+            "added_on": video.added_on,
+            "video_casts": [],
+            "video_available": []
+        }
+
+        # Add video_casts associated with the current video
+        video_casts = VideoCast.objects.filter(video_id=video.id)
+        video_casts_serializer = VideoCastSerializer(video_casts, many=True)
+        response_data["video_casts"] = video_casts_serializer.data
+
+        # Add video_available associated with the current video
+        video_available = VideoAvailability.objects.filter(video_id=video.id)
+        video_available_serializer = VideoAvailabilitySerializer(video_available, many=True)
+        response_data["video_available"] = video_available_serializer.data
+
+        return Response({"error": False, "message": "Single Data Fetch", "data": response_data})
+
+    def destroy(self, request, pk=None):
+        user = request.user
+        try:
+            watch_history_entry = ViewHistory.objects.get(user_id=user.id, pk=pk)
+        except ViewHistory.DoesNotExist:
+            return Response(
+                {"error": True, "message": "Watch history entry does not exist"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        watch_history_entry.delete()
+        return Response(
+            {"error": False, "message": "Watch history entry deleted successfully"},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 
 class HomeApiViewSet(viewsets.ViewSet):
